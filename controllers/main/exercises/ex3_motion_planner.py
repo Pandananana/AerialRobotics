@@ -1,8 +1,8 @@
-from lib.a_star_3D import AStar3D
-import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
+import numpy as np
+from lib.a_star_3D import AStar3D
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+
 
 class MotionPlanner3D():
     
@@ -42,13 +42,16 @@ class MotionPlanner3D():
         # - path_waypoints: The sequence of input path waypoints provided by the path-planner, including the start and final goal position: Vector of m waypoints, consisting of a tuple with three reference positions each as provided by AStar
 
         # TUNE THE FOLLOWING PARAMETERS (PART 2) ----------------------------------------------------------------- ##
-        self.disc_steps = 2 #Integer number steps to divide every path segment into to provide the reference positions for PID control # IDEAL: Between 10 and 20
-        self.vel_lim = 2.0 #Velocity limit of the drone (m/s)
-        self.acc_lim = 10.0 #Acceleration limit of the drone (m/s²)
-        t_f = 10.0  # Final time at the end of the path (s)
+        self.disc_steps = 20 #Integer number steps to divide every path segment into to provide the reference positions for PID control # IDEAL: Between 10 and 20
+        self.vel_lim = 5.0 #Velocity limit of the drone (m/s)
+        self.acc_lim = 50.0 #Acceleration limit of the drone (m/s²)
+        t_f = 4.0  # Final time at the end of the path (s)
 
-        # Determine the number of segments of the path
-        self.times = np.linspace(0, t_f, len(path_waypoints)) # The time vector at each path waypoint to traverse (Vector of size m) (must be 0 at start)
+        # Allocate time per segment proportional to its Euclidean distance
+        waypoints = np.array(path_waypoints)
+        seg_distances = np.linalg.norm(np.diff(waypoints, axis=0), axis=1)
+        cumulative_dist = np.concatenate(([0], np.cumsum(seg_distances)))
+        self.times = cumulative_dist / cumulative_dist[-1] * t_f
 
     def compute_poly_matrix(self, t):
         # Inputs:
@@ -56,15 +59,19 @@ class MotionPlanner3D():
         # Outputs: 
         # - The constraint matrix "A_m(t)" [5 x 6]
         # The "A_m" matrix is used to represent the system of equations [x, \dot{x}, \ddot{x}, \dddot{x}, \ddddot{x}]^T  = A_m(t) * poly_coeffs (where poly_coeffs = [c_0, c_1, c_2, c_3, c_4, c_5]^T and represents the unknown polynomial coefficients for one segment)
-        A_m = np.zeros((5,6))
         
         # TASK: Fill in the constraint factor matrix values where each row corresponds to the positions, velocities, accelerations, jerk and snap here
 
         # YOUR SOLUTION HERE ---------------------------------------------------------------------------------- ## 
-        
-        # A_m = np.array([
-        #     ...
-        # ])
+        # We use the matrix from lecture slide page 11, but discard the t=0 rows (row 0-2)
+        # Then we add 2 extra rows so we have jerk and snap, and they are just the derivatives of the rows above
+        A_m = np.array([
+            [1, t, t**2, t**3, t**4, t**5],
+            [0, 1, 2*t, 3*t**2, 4*t**3, 5*t**4],
+            [0, 0, 2, 6*t, 12*t**2, 20*t**3],
+            [0, 0, 0, 6, 24*t, 60*t**2],
+            [0, 0, 0, 0, 24, 120*t]
+        ])
 
         ## ---------------------------------------------------------------------------------------------------- ##
 
@@ -89,28 +96,56 @@ class MotionPlanner3D():
         # 1. Fill the entries of the constraint matrix A and equality vector b for x,y and z dimensions in the system A * poly_coeffs = b. Consider the constraints according to the lecture: We should have a total of 6*(m-1) constraints for each dimension.
         # 2. Solve for poly_coeffs given the defined system
 
-        for dim in range(3):  # Compute for x, y, and z separately
+        for dim in range(3):
             A = np.zeros((6*(m-1), 6*(m-1)))
             b = np.zeros(6*(m-1))
             pos = np.array([p[dim] for p in path_waypoints])
-            A_0 = self.compute_poly_matrix(0) # A_0 gives the constraint factor matrix A_m for any segment at t=0, this is valid for the starting conditions at every path segment
+            A_0 = self.compute_poly_matrix(0)
 
+            row = 0
             for i in range(m-1):
-                pos_0 = pos[i] #Starting position of the segment
-                pos_f = pos[i+1] #Final position of the segment
-                A_f = self.compute_poly_matrix(seg_times[i]) # A_f gives the constraint factor matrix A_m for a segment i at its relative end time t=seg_times[i]
-                # if i == 0: # First path segment
-                #     # 1. Implement the initial constraints here for the first path segment using A_0, ensuring that the intiial velocities / accelerations are zero
-                #     # 2. Implement the final position and the continuity constraints for velocity, acceleration, jerk and snap at the end of the first segment here using A_0 and A_f (check hints in the exercise description)
-                # elif i < m-2: # Intermediate path segments
-                #     # 1. Similarly, implement the initial and final position constraints here for each intermediate path segment
-                #     # 2. Similarly, implement the end of the continuity constraints for velocity, acceleration, jerk and snap at the end of each intermediate segment here using A_0 and A_f
-                # elif i == m-2: #Final path segment
-                #     # 1. Implement the initial and final position, velocity and accelerations constraints here for the final path segment using A_0 and A_f
-        
-            # Solve for the polynomial coefficients for the dimension dim
+                pos_0 = pos[i]
+                pos_f = pos[i+1]
+                A_f = self.compute_poly_matrix(seg_times[i])
+                ci = 6 * i
 
-            # poly_coeffs[:,dim] = ...
+                if i == 0:
+                    A[row, ci:ci+6] = A_0[0, :]
+                    b[row] = pos_0
+                    row += 1
+                    A[row, ci:ci+6] = A_0[1, :]
+                    b[row] = 0
+                    row += 1
+                    A[row, ci:ci+6] = A_0[2, :]
+                    b[row] = 0
+                    row += 1
+                else:
+                    A[row, ci:ci+6] = A_0[0, :]
+                    b[row] = pos_0
+                    row += 1
+
+                if i == m - 2:
+                    A[row, ci:ci+6] = A_f[0, :]
+                    b[row] = pos_f
+                    row += 1
+                    A[row, ci:ci+6] = A_f[1, :]
+                    b[row] = 0
+                    row += 1
+                    A[row, ci:ci+6] = A_f[2, :]
+                    b[row] = 0
+                    row += 1
+                else:
+                    A[row, ci:ci+6] = A_f[0, :]
+                    b[row] = pos_f
+                    row += 1
+                    cn = 6 * (i + 1)
+                    for k in range(1, 5):
+                        A[row, ci:ci+6] = A_f[k, :]
+                        A[row, cn:cn+6] = -A_0[k, :]
+                        b[row] = 0
+                        row += 1
+
+            poly_coeffs[:, dim] = np.linalg.solve(A, b)
 
         ## ---------------------------------------------------------------------------------------------------- ##
 
