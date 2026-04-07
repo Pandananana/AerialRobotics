@@ -54,13 +54,12 @@ class MyAssignment:
     def compute_command(self, sensor_data, camera_data, dt):
 
         # Take off
-        if sensor_data['z_global'] < 0.49:
-            control_command = [sensor_data['x_global'], sensor_data['y_global'], 1.0, sensor_data['yaw']]
+        if sensor_data['z_global'] < 1:
+            control_command = [sensor_data['x_global'], sensor_data['y_global'], 1.5, sensor_data['yaw']]
             return control_command
 
         # Always detect gate and transform corners
-        detection = self.detect_gate(camera_data)
-        self.transform_gate_corners_to_world(detection, sensor_data)
+        self.update_gate_detection(camera_data, sensor_data)
 
         drone_pos = np.array([sensor_data['x_global'], sensor_data['y_global'], sensor_data['z_global']])
 
@@ -94,7 +93,7 @@ class MyAssignment:
 
             else:
                 # Rotate left to scan for gates
-                self.target_yaw = sensor_data['yaw'] + 0.15
+                self.target_yaw = sensor_data['yaw'] + 0.3
 
             control_command = [sensor_data['x_global'], sensor_data['y_global'], sensor_data['z_global'], self.target_yaw or sensor_data['yaw']]
 
@@ -120,7 +119,7 @@ class MyAssignment:
                     normal = -normal
                 self.approach_normal = normal
 
-            if self.wait_timer >= 1.0:
+            if self.wait_timer >= 1.0 and self.predicted_corners_world is not None:
                 # Store measurement
                 center = np.array(self.gate_center_world).copy()
                 corners = [np.array(c).copy() for c in self.predicted_corners_world]
@@ -165,6 +164,15 @@ class MyAssignment:
 
         return control_command
 
+    def update_gate_detection(self, camera_data, sensor_data):
+        """Detect gate in camera image and update world coordinates."""
+        corners = self.detect_gate(camera_data)
+        if corners is None:
+            self.predicted_corners_world = None
+            self.gate_center_world = None
+            return
+        self.transform_gate_corners_to_world(corners, sensor_data)
+
     def detect_gate(self, camera_data):
         """Detect a pink gate in the camera image and return its 4 corners + center pixel."""
         # Convert BGRA to BGR if needed
@@ -194,6 +202,13 @@ class MyAssignment:
             return None
 
         corners = self.order_corners(approx)
+
+        # Reject if any corner is too close to the frame edge
+        h, w = camera_data.shape[:2]
+        margin = 15
+        for c in corners:
+            if c[0] < margin or c[0] > w - margin or c[1] < margin or c[1] > h - margin:
+                return None
 
         # corners ordered as: top-left, top-right, bottom-right, bottom-left
         return corners
