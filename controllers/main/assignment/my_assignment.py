@@ -36,7 +36,9 @@ class MyAssignment:
         self.lower_pink = np.array([140, 42, 0])
         self.upper_pink = np.array([156, 255, 255])
 
-        pass
+        # Predicted gate corners in world coordinates (set each frame, read by main.py for visualization)
+        self.predicted_corners_world = None
+        self.gate_center_world = None
 
     def compute_command(self, sensor_data, camera_data, dt):
 
@@ -51,25 +53,33 @@ class MyAssignment:
         # ---- YOUR CODE HERE ----
 
         # Detect gate in camera image
+        self.predicted_corners_world = None
         detection = self.detect_gate(camera_data)
         if detection is not None:
-            corners, center_px = detection
+            corners = detection
 
-            # Estimate depth from known gate height
+            # Estimate depth from known gate height (corners: TL, TR, BR, BL)
             upper_left, upper_right, lower_right, lower_left = corners
             Z_left, Z_right = self.estimate_gate_depth(upper_left, lower_left, upper_right, lower_right)
-            Z_avg = (Z_left + Z_right) / 2
 
             # Build rotation matrix from drone attitude
             R = self.rotation_matrix(sensor_data['roll'], sensor_data['pitch'], sensor_data['yaw'])
-            transform = np.array([sensor_data['x_global'], sensor_data['y_global'], sensor_data['z_global']])
+            drone_pos = np.array([sensor_data['x_global'], sensor_data['y_global'], sensor_data['z_global']])
 
-            # Project gate center to world coordinates
-            gate_world = self.point_to_world_coordinate(center_px, R, np.append(transform, Z_avg))
+            # Project each corner to world coordinates
+            self.predicted_corners_world = []
+            for idx, corner_px in enumerate(corners):
+                Z = Z_left if idx in [0, 3] else Z_right
+                world_pt = self.point_to_world_coordinate(corner_px, R, np.append(drone_pos, Z))
+                self.predicted_corners_world.append(world_pt)
 
-        control_command = [sensor_data['x_global'], sensor_data['y_global'], 1.0, sensor_data['yaw']]
+        # Fly towards gate center if it is detected
+        if self.gate_center_world is not None:
+            control_command = [self.gate_center_world[0], self.gate_center_world[1], 1.0, sensor_data['yaw']]
+        else:
+            control_command = [sensor_data['x_global'], sensor_data['y_global'], 1.0, sensor_data['yaw']]
 
-        return control_command # Ordered as array with: [pos_x_cmd, pos_y_cmd, pos_z_cmd, yaw_cmd] in meters and radians
+        return control_command
 
     def detect_gate(self, camera_data):
         """Detect a pink gate in the camera image and return its 4 corners + center pixel."""
@@ -100,10 +110,9 @@ class MyAssignment:
             return None
 
         corners = self.order_corners(approx)
-        center_px = corners.mean(axis=0).astype(int)
 
         # corners ordered as: top-left, top-right, bottom-right, bottom-left
-        return corners, center_px
+        return corners
 
     @staticmethod
     def order_corners(pts):
@@ -124,13 +133,16 @@ class MyAssignment:
         u, v = point
         Z = transform[3]  # depth passed as 4th element
 
-        # Pixel -> camera frame
+        # Pixel -> camera frame (X-right, Y-down, Z-forward)
         X_cam = (u - cx) * Z / self.f
         Y_cam = (v - cy) * Z / self.f
         Z_cam = Z
 
-        # Camera frame -> world frame
-        world_point = rotation @ np.array([X_cam, Y_cam, Z_cam]) + transform[:3]
+        # Camera frame -> body frame (X-forward, Y-left, Z-up)
+        body_point = np.array([Z_cam, -X_cam, -Y_cam])
+
+        # Body frame -> world frame
+        world_point = rotation @ body_point + transform[:3]
         return world_point
 
     def estimate_gate_depth(self, upper_left, lower_left, upper_right, lower_right):
