@@ -41,23 +41,22 @@ class MyAssignment:
         self.gate_center_world = None
 
         # State machine for gate measurement
-        self.state = "SEARCHING"  # SEARCHING -> APPROACHING -> WAITING -> DONE
-        self.target_position = None  # 1m in front of gate
+        self.state = "SEARCHING"  # SEARCHING -> APPROACHING -> MEASURING -> PASSING_THROUGH -> (loop)
+        self.target_position = None
         self.wait_timer = 0.0
-        self.gate_measurement = None  # final gate location to print
-        self.target_yaw = None  # yaw to face the gate
+        self.target_yaw = None
+
+        # Gate tracking
+        self.current_gate_index = 0
+        self.gate_measurements = []  # list of {"center", "normal", "corners"}
+        self.approach_normal = None  # normal vector from gate toward approach side
 
     def compute_command(self, sensor_data, camera_data, dt):
 
-        # NOTE: Displaying the camera image with cv2.imshow() will throw an error because GUI operations should be performed in the main thread.
-        # If you want to display the camera image you can call it in main.py.
-
-        # Take off example
+        # Take off
         if sensor_data['z_global'] < 0.49:
             control_command = [sensor_data['x_global'], sensor_data['y_global'], 1.0, sensor_data['yaw']]
             return control_command
-
-        # ---- YOUR CODE HERE ----
 
         # Always detect gate and transform corners
         detection = self.detect_gate(camera_data)
@@ -76,47 +75,89 @@ class MyAssignment:
 
                 center = np.array(self.gate_center_world)
 
-                # Two candidate positions 1m in front of gate
+                # Two candidate positions 1m in front of gate — pick closest to drone
                 candidate1 = center + normal
                 candidate2 = center - normal
 
-                # Pick the closest one to the drone
                 if np.linalg.norm(candidate1 - drone_pos) < np.linalg.norm(candidate2 - drone_pos):
                     self.target_position = candidate1
+                    self.approach_normal = normal  # points from center toward approach side
                 else:
                     self.target_position = candidate2
+                    self.approach_normal = -normal
 
-                self.gate_measurement = center.copy()
                 # Compute yaw to face the gate from the target position
                 direction = center - self.target_position
                 self.target_yaw = np.arctan2(direction[1], direction[0])
                 self.state = "APPROACHING"
-                print(f"[GATE] Detected gate at {self.gate_measurement}. Flying to {self.target_position}")
+                print(f"[GATE {self.current_gate_index}] Detected. Flying to 1m in front.")
 
-            # Keep hovering while searching
-            control_command = [sensor_data['x_global'], sensor_data['y_global'], 1.0, sensor_data['yaw']]
+            else:
+                # Rotate left to scan for gates
+                self.target_yaw = sensor_data['yaw'] + 0.15
+
+            control_command = [sensor_data['x_global'], sensor_data['y_global'], sensor_data['z_global'], self.target_yaw or sensor_data['yaw']]
 
         elif self.state == "APPROACHING":
             dist = np.linalg.norm(self.target_position - drone_pos)
             if dist < 0.05:
-                self.state = "WAITING"
+                self.state = "MEASURING"
                 self.wait_timer = 0.0
-                print("[GATE] Arrived in front of gate. Waiting 1s for stable measurement...")
+                print(f"[GATE {self.current_gate_index}] Arrived. Measuring for 1s...")
             control_command = [self.target_position[0], self.target_position[1], self.target_position[2], self.target_yaw]
 
-        elif self.state == "WAITING":
+        elif self.state == "MEASURING":
             self.wait_timer += dt
-            # Keep updating gate measurement while waiting
-            if self.gate_center_world is not None:
-                self.gate_measurement = np.array(self.gate_center_world).copy()
+            # Keep updating measurement while hovering
+            if self.gate_center_world is not None and self.predicted_corners_world is not None:
+                c = self.predicted_corners_world
+                edge1 = np.array(c[1]) - np.array(c[0])
+                edge2 = np.array(c[3]) - np.array(c[0])
+                normal = np.cross(edge1, edge2)
+                normal = normal / np.linalg.norm(normal)
+                # Keep normal pointing toward approach side
+                if np.dot(normal, self.approach_normal) < 0:
+                    normal = -normal
+                self.approach_normal = normal
 
             if self.wait_timer >= 1.0:
-                self.state = "DONE"
-                print(f"[GATE] === Gate world location: {self.gate_measurement} ===")
-                if self.predicted_corners_world is not None:
-                    for i, label in enumerate(["TL", "TR", "BR", "BL"]):
-                        print(f"[GATE]   Corner {label}: {self.predicted_corners_world[i]}")
+                # Store measurement
+                center = np.array(self.gate_center_world).copy()
+                corners = [np.array(c).copy() for c in self.predicted_corners_world]
+                self.gate_measurements.append({
+                    "center": center,
+                    "normal": self.approach_normal.copy(),
+                    "corners": corners,
+                })
+                print(f"[GATE {self.current_gate_index}] === Measured at {center} ===")
+                for i, label in enumerate(["TL", "TR", "BR", "BL"]):
+                    print(f"[GATE {self.current_gate_index}]   Corner {label}: {corners[i]}")
 
+                # Compute pass-through target: 20cm past gate center along drone→center line
+                direction = center - drone_pos
+                direction_norm = direction / np.linalg.norm(direction)
+                self.target_position = center + direction_norm * 0.2
+                self.target_yaw = np.arctan2(direction_norm[1], direction_norm[0])
+                self.state = "PASSING_THROUGH"
+                print(f"[GATE {self.current_gate_index}] Passing through to {self.target_position}")
+
+            control_command = [self.target_position[0], self.target_position[1], self.target_position[2], self.target_yaw]
+
+        elif self.state == "PASSING_THROUGH":
+            dist = np.linalg.norm(self.target_position - drone_pos)
+            if dist < 0.05:
+                self.current_gate_index += 1
+                if self.current_gate_index >= 5:
+                    self.state = "DONE"
+                    print("[GATE] All 5 gates measured! Measurements:")
+                    for i, m in enumerate(self.gate_measurements):
+                        print(f"  Gate {i}: center={m['center']}, normal={m['normal']}")
+                else:
+                    self.state = "SEARCHING"
+                    self.target_yaw = sensor_data['yaw']
+                    self.gate_center_world = None
+                    self.predicted_corners_world = None
+                    print(f"[GATE] Searching for gate {self.current_gate_index}...")
             control_command = [self.target_position[0], self.target_position[1], self.target_position[2], self.target_yaw]
 
         else:  # DONE
