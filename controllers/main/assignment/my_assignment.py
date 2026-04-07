@@ -40,6 +40,13 @@ class MyAssignment:
         self.predicted_corners_world = None
         self.gate_center_world = None
 
+        # State machine for gate measurement
+        self.state = "SEARCHING"  # SEARCHING -> APPROACHING -> WAITING -> DONE
+        self.target_position = None  # 1m in front of gate
+        self.wait_timer = 0.0
+        self.gate_measurement = None  # final gate location to print
+        self.target_yaw = None  # yaw to face the gate
+
     def compute_command(self, sensor_data, camera_data, dt):
 
         # NOTE: Displaying the camera image with cv2.imshow() will throw an error because GUI operations should be performed in the main thread.
@@ -52,15 +59,68 @@ class MyAssignment:
 
         # ---- YOUR CODE HERE ----
 
-        # Detect gate and transform corners to world coordinates
+        # Always detect gate and transform corners
         detection = self.detect_gate(camera_data)
         self.transform_gate_corners_to_world(detection, sensor_data)
 
-        # Fly towards gate center if it is detected
-        if self.gate_center_world is not None:
-            control_command = [self.gate_center_world[0], self.gate_center_world[1], self.gate_center_world[2], sensor_data['yaw']]
-        else:
+        drone_pos = np.array([sensor_data['x_global'], sensor_data['y_global'], sensor_data['z_global']])
+
+        if self.state == "SEARCHING":
+            if self.gate_center_world is not None and self.predicted_corners_world is not None:
+                # Compute gate normal from corners (TL, TR, BR, BL)
+                c = self.predicted_corners_world
+                edge1 = np.array(c[1]) - np.array(c[0])  # TL -> TR
+                edge2 = np.array(c[3]) - np.array(c[0])  # TL -> BL
+                normal = np.cross(edge1, edge2)
+                normal = normal / np.linalg.norm(normal)
+
+                center = np.array(self.gate_center_world)
+
+                # Two candidate positions 1m in front of gate
+                candidate1 = center + normal
+                candidate2 = center - normal
+
+                # Pick the closest one to the drone
+                if np.linalg.norm(candidate1 - drone_pos) < np.linalg.norm(candidate2 - drone_pos):
+                    self.target_position = candidate1
+                else:
+                    self.target_position = candidate2
+
+                self.gate_measurement = center.copy()
+                # Compute yaw to face the gate from the target position
+                direction = center - self.target_position
+                self.target_yaw = np.arctan2(direction[1], direction[0])
+                self.state = "APPROACHING"
+                print(f"[GATE] Detected gate at {self.gate_measurement}. Flying to {self.target_position}")
+
+            # Keep hovering while searching
             control_command = [sensor_data['x_global'], sensor_data['y_global'], 1.0, sensor_data['yaw']]
+
+        elif self.state == "APPROACHING":
+            dist = np.linalg.norm(self.target_position - drone_pos)
+            if dist < 0.05:
+                self.state = "WAITING"
+                self.wait_timer = 0.0
+                print("[GATE] Arrived in front of gate. Waiting 1s for stable measurement...")
+            control_command = [self.target_position[0], self.target_position[1], self.target_position[2], self.target_yaw]
+
+        elif self.state == "WAITING":
+            self.wait_timer += dt
+            # Keep updating gate measurement while waiting
+            if self.gate_center_world is not None:
+                self.gate_measurement = np.array(self.gate_center_world).copy()
+
+            if self.wait_timer >= 1.0:
+                self.state = "DONE"
+                print(f"[GATE] === Gate world location: {self.gate_measurement} ===")
+                if self.predicted_corners_world is not None:
+                    for i, label in enumerate(["TL", "TR", "BR", "BL"]):
+                        print(f"[GATE]   Corner {label}: {self.predicted_corners_world[i]}")
+
+            control_command = [self.target_position[0], self.target_position[1], self.target_position[2], self.target_yaw]
+
+        else:  # DONE
+            control_command = [self.target_position[0], self.target_position[1], self.target_position[2], self.target_yaw]
 
         return control_command
 
