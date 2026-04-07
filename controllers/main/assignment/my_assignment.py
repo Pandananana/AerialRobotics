@@ -41,7 +41,7 @@ class MyAssignment:
         self.gate_center_world = None
 
         # State machine for gate measurement
-        self.state = "SEARCHING"  # SEARCHING -> APPROACHING -> MEASURING -> PASSING_THROUGH -> (loop)
+        self.state = "TAKEOFF"  # TAKEOFF -> SEARCHING -> APPROACHING -> MEASURING -> PASSING_THROUGH -> (loop)
         self.target_position = None
         self.wait_timer = 0.0
         self.target_yaw = None
@@ -54,8 +54,13 @@ class MyAssignment:
     def compute_command(self, sensor_data, camera_data, dt):
 
         # Take off
-        if sensor_data['z_global'] < 1:
-            control_command = [sensor_data['x_global'], sensor_data['y_global'], 1.5, sensor_data['yaw']]
+        if self.state == "TAKEOFF":
+            if sensor_data['z_global'] < 1:
+                control_command = [sensor_data['x_global'], sensor_data['y_global'], 1.5, sensor_data['yaw']]
+            else:
+                self.state = "SEARCHING"
+                control_command = [sensor_data['x_global'], sensor_data['y_global'], sensor_data['z_global'], sensor_data['yaw']]
+            
             return control_command
 
         # Always detect gate and transform corners
@@ -162,7 +167,7 @@ class MyAssignment:
         else:  # DONE
             control_command = [self.target_position[0], self.target_position[1], self.target_position[2], self.target_yaw]
 
-        return control_command
+        return self.clamp_control_command(control_command, sensor_data)
 
     def update_gate_detection(self, camera_data, sensor_data):
         """Detect gate in camera image and update world coordinates."""
@@ -236,6 +241,25 @@ class MyAssignment:
 
         # Calculate the center of the gate
         self.gate_center_world = np.mean(self.predicted_corners_world, axis=0)
+
+    def clamp_control_command(self, control_command, sensor_data, max_speed=0.5, max_yaw_rate=0.15):
+        """Clamp position displacement and yaw change to limit drone speed and rotation."""
+        x_t, y_t, z_t, yaw_t = control_command
+        x, y, z = sensor_data['x_global'], sensor_data['y_global'], sensor_data['z_global']
+        yaw = sensor_data['yaw']
+
+        # Clamp position: limit displacement magnitude
+        displacement = np.array([x_t - x, y_t - y, z_t - z])
+        dist = np.linalg.norm(displacement)
+        if dist > max_speed:
+            displacement = displacement / dist * max_speed
+        target = np.array([x, y, z]) + displacement
+
+        # Clamp yaw: wrap difference to [-pi, pi] then limit magnitude
+        dyaw = (yaw_t - yaw + np.pi) % (2 * np.pi) - np.pi
+        dyaw = np.clip(dyaw, -max_yaw_rate, max_yaw_rate)
+
+        return [target[0], target[1], target[2], yaw + dyaw]
 
     @staticmethod
     def order_corners(pts):
