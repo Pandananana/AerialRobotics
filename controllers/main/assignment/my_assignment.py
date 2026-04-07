@@ -70,12 +70,12 @@ class MyAssignment:
 
         if self.state == "SEARCHING":
             if self.gate_center_world is not None and self.predicted_corners_world is not None:
-                # Compute gate normal from corners (TL, TR, BR, BL)
-                c = self.predicted_corners_world
-                edge1 = np.array(c[1]) - np.array(c[0])  # TL -> TR
-                edge2 = np.array(c[3]) - np.array(c[0])  # TL -> BL
-                normal = np.cross(edge1, edge2)
-                normal = normal / np.linalg.norm(normal)
+                normal = self.compute_gate_normal()
+                if normal is None:
+                    print("No gate detected, moving outward")
+                    self.predicted_corners_world = None
+                    self.gate_center_world = None
+                    return self.move_outward_and_yaw(sensor_data)
 
                 center = np.array(self.gate_center_world)
 
@@ -114,15 +114,12 @@ class MyAssignment:
             self.wait_timer += dt
             # Keep updating measurement while hovering
             if self.gate_center_world is not None and self.predicted_corners_world is not None:
-                c = self.predicted_corners_world
-                edge1 = np.array(c[1]) - np.array(c[0])
-                edge2 = np.array(c[3]) - np.array(c[0])
-                normal = np.cross(edge1, edge2)
-                normal = normal / np.linalg.norm(normal)
-                # Keep normal pointing toward approach side
-                if np.dot(normal, self.approach_normal) < 0:
-                    normal = -normal
-                self.approach_normal = normal
+                normal = self.compute_gate_normal()
+                if normal is not None:
+                    # Keep normal pointing toward approach side
+                    if np.dot(normal, self.approach_normal) < 0:
+                        normal = -normal
+                    self.approach_normal = normal
 
             if self.wait_timer >= 1.0 and self.predicted_corners_world is not None:
                 # Store measurement
@@ -178,6 +175,27 @@ class MyAssignment:
             return
         self.transform_gate_corners_to_world(corners, sensor_data)
 
+    def compute_gate_normal(self):
+        """Compute gate normal from predicted corners. Returns None if degenerate (edge-on gate)."""
+        c = self.predicted_corners_world
+        edge1 = np.array(c[1]) - np.array(c[0])
+        edge2 = np.array(c[3]) - np.array(c[0])
+        normal = np.cross(edge1, edge2)
+        norm_len = np.linalg.norm(normal)
+        if norm_len < 1e-6:
+            return None
+        return normal / norm_len
+
+    def move_outward_and_yaw(self, sensor_data, distance=0.3, yaw_step=0.3):
+        """Move outward from world center (5,5) and yaw left to get a better gate view."""
+        center = np.array([5.0, 5.0])
+        pos2d = np.array([sensor_data['x_global'], sensor_data['y_global']])
+        radial = pos2d - center
+        radial_norm = radial / (np.linalg.norm(radial) + 1e-6)
+        outward_target = pos2d + radial_norm * distance
+        return [outward_target[0], outward_target[1], sensor_data['z_global'], sensor_data['yaw'] + yaw_step]
+
+    # TODO: We need to handle multiple gates in the same frame, and selecting only the closest gate to the drone
     def detect_gate(self, camera_data):
         """Detect a pink gate in the camera image and return its 4 corners + center pixel."""
         # Convert BGRA to BGR if needed
