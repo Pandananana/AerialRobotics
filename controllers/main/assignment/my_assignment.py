@@ -349,14 +349,22 @@ class ApproachingState(State):
     def __init__(self, target_pos, gate_center):
         self.target_pos = target_pos
         self.gate_center = gate_center
+        self.approach_distance = 0.5
 
     def execute(self, drone, tracker, dt):
         if tracker.has_estimate:
-            normal = tracker.oriented_normal()
+            normal = compute_gate_normal(tracker.corners)
             if normal is not None:
-                tracker.approach_normal = normal
                 self.gate_center = np.array(tracker.center)
-                self.target_pos = self.gate_center + normal
+                # Pick the normal direction closest to the drone
+                candidate_a = self.gate_center + normal * self.approach_distance
+                candidate_b = self.gate_center - normal * self.approach_distance
+                if np.linalg.norm(candidate_a - drone.pos) <= np.linalg.norm(candidate_b - drone.pos):
+                    chosen_normal = normal
+                else:
+                    chosen_normal = -normal
+                tracker.approach_normal = chosen_normal
+                self.target_pos = self.gate_center + chosen_normal * self.approach_distance
 
         direction = self.gate_center - drone.pos
         target_yaw = np.arctan2(direction[1], direction[0])
