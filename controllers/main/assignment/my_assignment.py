@@ -188,8 +188,6 @@ class GateDetector:
         rect[3] = pts[np.argmax(d)]
         return rect
 
-# TODO: The Kalman filtered corners flies from the drone towards the gate when transitioning from passing through to searching/approaching.
-# This does not happen on the the first gate, suggesting the kalman filter or gate detector is not reset correctly.
 class GateKalmanFilter:
     """Kalman filter for 4 gate corners (12D state). Gate is static, noise is from detection."""
 
@@ -455,8 +453,8 @@ class MyAssignment:
     def compute_command(self, sensor_data, camera_data, dt):
         drone = DroneState.from_sensor_data(sensor_data)
 
-        # Detection runs for all states except takeoff
-        if not isinstance(self.state, TakeoffState):
+        # Detection runs only during states that need it (not during takeoff, passing through, or done)
+        if not isinstance(self.state, (TakeoffState, PassingThroughState, DoneState)):
             corners_world, _ = self.detector.detect(camera_data, drone)
             if corners_world is not None:
                 self.tracker.process_detection(corners_world)
