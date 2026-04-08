@@ -148,7 +148,8 @@ class MyAssignment:
                     self.target_yaw = np.arctan2(direction[1], direction[0])
 
             dist = np.linalg.norm(self.target_position - drone_pos)
-            if dist < 0.05:
+            yaw_error = abs(self.target_yaw - sensor_data['yaw'])
+            if dist < 0.05 and yaw_error < 0.05:
                 self.state = "MEASURING"
                 self.wait_timer = 0.0
                 print(f"[GATE {self.current_gate_index}] Arrived. Measuring for 1s...")
