@@ -31,8 +31,9 @@ EPFL MICRO-502 Aerial Robotics course. Program a Crazyflie quadrotor to autonomo
 
 **Progress tracking** — main.py divides the arena into angular segments around (4,4) and tracks which segment the drone is in. A gate is "passed" when the drone physically enters the gate's bounding box in local frame.
 
-**Key files:**
+**`controllers/main/assignment/my_assignment.py`** — Assignment code, structured as a state machine (`TakeoffState` → `SearchingState` → `ApproachingState` → `MeasuringState` → `PassingThroughState` → next gate or `DoneState`). Key classes: `GateDetector` (OpenCV pink gate detection + pixel-to-world projection), `GateKalmanFilter` (12D filter for 4 gate corners), `GateTracker` (manages filter state and stored measurements), `DroneState` (typed wrapper around sensor dict). The `MyAssignment` orchestrator runs detection, state transitions, and command clamping.
 
-- `controllers/main/assignment/my_assignment.py` — Your assignment code (gate detection + navigation)
+**Other key files:**
+
 - `controllers/main/exercises/ex1_pid_control.py` — PID controller (tunable)
-- `controllers/main/lib/` — Helper libraries (PID class, A\* pathfinding, waypoint following)
+- `controllers/main/lib/` — Helper libraries (PID class, A\* pathfinding)
