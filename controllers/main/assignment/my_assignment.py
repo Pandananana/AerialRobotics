@@ -25,6 +25,36 @@ import numpy as np
 # A link to further information on how to access the sensor data on the Crazyflie hardware for the hardware practical can be found here: https://www.bitcraze.io/documentation/repository/crazyflie-firmware/master/api/logs/#stateestimate
 
 
+class GateKalmanFilter:
+    """Kalman filter for 4 gate corners (12D state). Gate is static, noise is from detection."""
+
+    def __init__(self, corners_world, initial_uncertainty=0.5, process_noise=0.001, measurement_noise=0.1):
+        self.dim = 12  # 4 corners × 3 coordinates
+        self.x = np.concatenate(corners_world).astype(float)
+        self.P = np.eye(self.dim) * initial_uncertainty
+        self.Q = np.eye(self.dim) * process_noise
+        self.R = np.eye(self.dim) * measurement_noise
+
+    def update(self, corners_world):
+        """Predict (static model) then update with new measurement."""
+        # Predict: gate doesn't move, just grow uncertainty
+        self.P = self.P + self.Q
+
+        # Update
+        z = np.concatenate(corners_world).astype(float)
+        y = z - self.x
+        S = self.P + self.R
+        K = self.P @ np.linalg.inv(S)
+        self.x = self.x + K @ y
+        self.P = (np.eye(self.dim) - K) @ self.P
+
+    def get_corners(self):
+        return [self.x[i*3:(i+1)*3].copy() for i in range(4)]
+
+    def get_center(self):
+        return np.mean(self.get_corners(), axis=0)
+
+
 class MyAssignment:
     def __init__(self):
         # ---- INITIALISE YOUR VARIABLES HERE ----
@@ -50,6 +80,7 @@ class MyAssignment:
         self.current_gate_index = 0
         self.gate_measurements = []  # list of {"center", "normal", "corners"}
         self.approach_normal = None  # normal vector from gate toward approach side
+        self.gate_filter = None  # Kalman filter for current gate corners
 
     def compute_command(self, sensor_data, camera_data, dt):
 
@@ -103,6 +134,19 @@ class MyAssignment:
             control_command = [sensor_data['x_global'], sensor_data['y_global'], sensor_data['z_global'], self.target_yaw or sensor_data['yaw']]
 
         elif self.state == "APPROACHING":
+            # Continuously update approach target from filtered gate estimate
+            if self.gate_center_world is not None and self.predicted_corners_world is not None:
+                normal = self.compute_gate_normal()
+                if normal is not None:
+                    center = np.array(self.gate_center_world)
+                    # Pick the side of the normal closest to the approach normal we chose
+                    if np.dot(normal, self.approach_normal) < 0:
+                        normal = -normal
+                    self.approach_normal = normal
+                    self.target_position = center + normal
+                    direction = center - self.target_position
+                    self.target_yaw = np.arctan2(direction[1], direction[0])
+
             dist = np.linalg.norm(self.target_position - drone_pos)
             if dist < 0.05:
                 self.state = "MEASURING"
@@ -158,6 +202,7 @@ class MyAssignment:
                     self.target_yaw = sensor_data['yaw']
                     self.gate_center_world = None
                     self.predicted_corners_world = None
+                    self.gate_filter = None
                     print(f"[GATE] Searching for gate {self.current_gate_index}...")
             control_command = [self.target_position[0], self.target_position[1], self.target_position[2], self.target_yaw]
 
@@ -167,13 +212,33 @@ class MyAssignment:
         return self.clamp_control_command(control_command, sensor_data)
 
     def update_gate_detection(self, camera_data, sensor_data):
-        """Detect gate in camera image and update world coordinates."""
+        """Detect gate in camera image and update world coordinates via Kalman filter."""
         corners = self.detect_gate(camera_data)
         if corners is None:
-            self.predicted_corners_world = None
-            self.gate_center_world = None
+            # Keep the filtered estimate if we have one (don't clear on missed frames)
+            if self.gate_filter is not None:
+                self.predicted_corners_world = self.gate_filter.get_corners()
+                self.gate_center_world = self.gate_filter.get_center()
+            else:
+                self.predicted_corners_world = None
+                self.gate_center_world = None
             return
+
+        # Get raw world corners from this frame's detection
         self.transform_gate_corners_to_world(corners, sensor_data)
+        raw_corners = self.predicted_corners_world
+        if raw_corners is None:
+            return
+
+        # Feed into Kalman filter
+        if self.gate_filter is None:
+            self.gate_filter = GateKalmanFilter(raw_corners)
+        else:
+            self.gate_filter.update(raw_corners)
+
+        # Use filtered values
+        self.predicted_corners_world = self.gate_filter.get_corners()
+        self.gate_center_world = self.gate_filter.get_center()
 
     def compute_gate_normal(self):
         """Compute gate normal from predicted corners. Returns None if degenerate (edge-on gate)."""
