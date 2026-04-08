@@ -70,7 +70,7 @@ def compute_gate_normal(corners):
     return normal / norm_len
 
 
-def clamp_control_command(control_command, drone, max_speed=1, max_yaw_rate=0.4):
+def clamp_control_command(control_command, drone, max_speed=1, max_yaw_rate=0.3):
     """Clamp position displacement and yaw change to limit drone speed and rotation."""
     x_t, y_t, z_t, yaw_t = control_command
     displacement = np.array([x_t, y_t, z_t]) - drone.pos
@@ -295,8 +295,8 @@ class State(ABC):
 
 class TakeoffState(State):
     def execute(self, drone, tracker, dt):
-        if drone.pos[2] < 1:
-            return [drone.pos[0], drone.pos[1], 1.5, drone.yaw], None
+        if drone.pos[2] < 1.8:
+            return [drone.pos[0], drone.pos[1], 2.0, drone.yaw], None
         return [drone.pos[0], drone.pos[1], drone.pos[2], drone.yaw], SearchingState()
 
 # TODO: We need another state that moves to an average height and also moves further outside of the map.
@@ -433,8 +433,35 @@ class PassingThroughState(State):
                     print(f"  Gate {i}: center={m['center']}, normal={m['normal']}")
                 return cmd, DoneState(self.target_pos, self.target_yaw)
             else:
-                print(f"[GATE] Searching for gate {tracker.current_gate_index}...")
-                return [self.target_pos[0], self.target_pos[1], self.target_pos[2], drone.yaw], SearchingState()
+                print(f"[GATE] Repositioning before searching for gate {tracker.current_gate_index}...")
+                return [self.target_pos[0], self.target_pos[1], self.target_pos[2], drone.yaw], RepositioningState()
+
+        return cmd, None
+
+# TODO: We need to also rotate a little bit to the right when repositioning.
+class RepositioningState(State):
+    """Move the drone further from the gate circle center and up to 2m altitude before searching."""
+    CIRCLE_CENTER = np.array([4.0, 4.0])
+    TARGET_Z = 1.75
+    OUTWARD_DISTANCE = 1  # how much further from center to move
+
+    def __init__(self):
+        self.target_pos = None
+
+    def execute(self, drone, tracker, dt):
+        if self.target_pos is None:
+            pos2d = drone.pos[:2]
+            radial = pos2d - self.CIRCLE_CENTER
+            radial_norm = radial / (np.linalg.norm(radial) + 1e-6)
+            outward2d = pos2d + radial_norm * self.OUTWARD_DISTANCE
+            self.target_pos = np.array([outward2d[0], outward2d[1], self.TARGET_Z])
+
+        dist = np.linalg.norm(self.target_pos - drone.pos)
+        cmd = [self.target_pos[0], self.target_pos[1], self.target_pos[2], drone.yaw]
+
+        if dist < 0.1:
+            print(f"[GATE] Repositioned. Searching for gate {tracker.current_gate_index}...")
+            return cmd, SearchingState()
 
         return cmd, None
 
@@ -447,7 +474,8 @@ class DoneState(State):
     def execute(self, drone, tracker, dt):
         return [self.target_pos[0], self.target_pos[1], self.target_pos[2], self.target_yaw], None
 
-
+# TODO: We need a way to calculate if a gate has been skipped and reorder the gates so that they are circular.
+# TODO: When searching, we currently go around in a circle, but we instead need to also move somewhere so that we can detect all the gates in case we miss one.
 class MyAssignment:
     def __init__(self):
         self.detector = GateDetector(fov=1.5)
@@ -463,7 +491,7 @@ class MyAssignment:
         drone = DroneState.from_sensor_data(sensor_data)
 
         # Detection runs only during states that need it (not during takeoff, passing through, or done)
-        if not isinstance(self.state, (TakeoffState, PassingThroughState, DoneState)):
+        if not isinstance(self.state, (TakeoffState, PassingThroughState, RepositioningState, DoneState)):
             corners_world, _ = self.detector.detect(camera_data, drone)
             if corners_world is not None:
                 self.tracker.process_detection(corners_world)
