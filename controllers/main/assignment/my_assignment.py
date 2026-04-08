@@ -70,7 +70,7 @@ def compute_gate_normal(corners):
     return normal / norm_len
 
 
-def clamp_control_command(control_command, drone, max_speed=0.5, max_yaw_rate=0.15):
+def clamp_control_command(control_command, drone, max_speed=1, max_yaw_rate=0.4):
     """Clamp position displacement and yaw change to limit drone speed and rotation."""
     x_t, y_t, z_t, yaw_t = control_command
     displacement = np.array([x_t, y_t, z_t]) - drone.pos
@@ -324,10 +324,10 @@ class SearchingState(State):
                 target_pos = candidate2
                 tracker.approach_normal = -normal
 
-            direction = center - target_pos
+            direction = center - drone.pos
             target_yaw = np.arctan2(direction[1], direction[0])
             print(f"[GATE {tracker.current_gate_index}] Detected. Flying to 1m in front.")
-            return [drone.pos[0], drone.pos[1], drone.pos[2], target_yaw], ApproachingState(target_pos, target_yaw)
+            return [drone.pos[0], drone.pos[1], drone.pos[2], target_yaw], ApproachingState(target_pos, center)
         else:
             self.target_yaw = drone.yaw + 0.3
 
@@ -346,29 +346,30 @@ class SearchingState(State):
 
 
 class ApproachingState(State):
-    def __init__(self, target_pos, target_yaw):
+    def __init__(self, target_pos, gate_center):
         self.target_pos = target_pos
-        self.target_yaw = target_yaw
+        self.gate_center = gate_center
 
     def execute(self, drone, tracker, dt):
         if tracker.has_estimate:
             normal = tracker.oriented_normal()
             if normal is not None:
                 tracker.approach_normal = normal
-                center = np.array(tracker.center)
-                self.target_pos = center + normal
-                direction = center - self.target_pos
-                self.target_yaw = np.arctan2(direction[1], direction[0])
+                self.gate_center = np.array(tracker.center)
+                self.target_pos = self.gate_center + normal
+
+        direction = self.gate_center - drone.pos
+        target_yaw = np.arctan2(direction[1], direction[0])
 
         dist = np.linalg.norm(self.target_pos - drone.pos)
-        yaw_error = abs(self.target_yaw - drone.yaw)
-        cmd = [self.target_pos[0], self.target_pos[1], self.target_pos[2], self.target_yaw]
+        yaw_error = abs(target_yaw - drone.yaw)
+        cmd = [self.target_pos[0], self.target_pos[1], self.target_pos[2], target_yaw]
 
         if dist < 0.05 and yaw_error < 0.05:
             tracker.reset_filter()
             print("Resetting gate filter")
             print(f"[GATE {tracker.current_gate_index}] Arrived. Measuring for 1s...")
-            return cmd, MeasuringState(self.target_pos.copy(), self.target_yaw)
+            return cmd, MeasuringState(self.target_pos.copy(), target_yaw)
 
         return cmd, None
 
