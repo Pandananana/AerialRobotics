@@ -233,6 +233,10 @@ class MyAssignment:
         if raw_corners is None:
             return
 
+        # Reject detections with implausible physical dimensions
+        if not self.gate_dimensions_plausible(raw_corners):
+            return
+
         # Feed into Kalman filter
         if self.gate_filter is None:
             self.gate_filter = GateKalmanFilter(raw_corners)
@@ -253,6 +257,23 @@ class MyAssignment:
         if norm_len < 1e-6:
             return None
         return normal / norm_len
+
+    @staticmethod
+    def gate_dimensions_plausible(corners, width_range=(0.2, 0.7), height_range=(0.2, 0.7)):
+        """Check if detected gate dimensions in world coords are physically plausible.
+        Corners are ordered: TL, TR, BR, BL."""
+        tl, tr, br, bl = [np.array(c) for c in corners]
+        width_top = np.linalg.norm(tr - tl)
+        width_bottom = np.linalg.norm(br - bl)
+        height_left = np.linalg.norm(bl - tl)
+        height_right = np.linalg.norm(br - tr)
+        avg_width = (width_top + width_bottom) / 2
+        avg_height = (height_left + height_right) / 2
+        if not (width_range[0] <= avg_width <= width_range[1]):
+            return False
+        if not (height_range[0] <= avg_height <= height_range[1]):
+            return False
+        return True
 
     def move_outward_and_yaw(self, sensor_data, distance=0.3, yaw_step=0.3):
         """Move outward from world center (5,5) and yaw left to get a better gate view."""
