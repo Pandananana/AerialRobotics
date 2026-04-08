@@ -152,6 +152,8 @@ class MyAssignment:
             if dist < 0.05 and yaw_error < 0.05:
                 self.state = "MEASURING"
                 self.wait_timer = 0.0
+                self.gate_filter = None
+                print("Resetting gate filter")
                 print(f"[GATE {self.current_gate_index}] Arrived. Measuring for 1s...")
             control_command = [self.target_position[0], self.target_position[1], self.target_position[2], self.target_yaw]
 
