@@ -17,8 +17,9 @@ import threading
 exp_num = 4                    # 0: Coordinate Transformation, 1: PID Tuning, 2: Kalman Filter, 3: Motion Planning, 4: Project
 control_style = 'path_planner'      # 'keyboard' or 'path_planner'
 rand_env = True                # Randomise the environment
-env_name = None                # Set to an environment name to replay it, None for random
+env_name = "skips_gate_6"                # Set to an environment name to replay it, None for random
 environments = {
+    # Previously difficiult environments that have now been solved
     "wrong_gate_direction_and_detection_1": 1746958632,
     "wrong_gate_direction_and_detection_2": 1506510396,
     "wrong_gate_direction_and_detection_3": 500296618,
@@ -29,6 +30,8 @@ environments = {
     "skip_gate_5": 1077235544,
     "orthogonal_gate_1": 2134677595,
 
+    # New environments that have not been solved yet
+    "skips_gate_on_fast_forward": 238244043,
 }
 
 # Global variables for handling threads
