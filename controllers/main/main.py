@@ -1,18 +1,20 @@
 # Main simulation file called by the Webots
+import random
 import sys
-print("You are using python at this location:", sys.executable)
+import threading
+import time
 
+import assignment.my_assignment as assignment
+import exercises.ex0_rotations as ex0_rotations
+import lib.mapping_and_planning_examples as mapping_and_planning_examples
 import numpy as np
-from controller import Supervisor, Keyboard
+from controller import Supervisor
 from exercises.ex1_pid_control import quadrotor_controller
 from exercises.ex2_kalman_filter import kalman_filter as KF
 from exercises.ex3_motion_planner import MotionPlanner3D as MP
-import assignment.my_assignment as assignment
-import exercises.ex0_rotations as ex0_rotations
 from scipy.spatial.transform import Rotation as R
-import lib.mapping_and_planning_examples as mapping_and_planning_examples
-import time, random
-import threading
+
+print("You are using python at this location:", sys.executable)
 
 exp_num = 4                    # 0: Coordinate Transformation, 1: PID Tuning, 2: Kalman Filter, 3: Motion Planning, 4: Project
 control_style = 'path_planner'      # 'keyboard' or 'path_planner'
