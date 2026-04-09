@@ -428,10 +428,10 @@ class PassingThroughState(State):
         if dist < 0.05:
             tracker.advance_gate()
             if tracker.all_gates_measured:
-                print("[GATE] All 5 gates measured! Measurements:")
+                print("[GATE] All 5 gates measured! Entering racing mode.")
                 for i, m in enumerate(tracker.measurements):
                     print(f"  Gate {i}: center={m['center']}, normal={m['normal']}")
-                return cmd, DoneState(self.target_pos, self.target_yaw)
+                return cmd, RacingState(tracker.measurements)
             else:
                 print(f"[GATE] Repositioning before searching for gate {tracker.current_gate_index}...")
                 return [self.target_pos[0], self.target_pos[1], self.target_pos[2], drone.yaw], RepositioningState(drone)
@@ -469,6 +469,64 @@ class RepositioningState(State):
         return cmd, None
 
 
+class RacingState(State):
+    """Fly through all gates at speed using known positions from lap 1."""
+
+    APPROACH_DIST = 0.3
+    EXIT_DIST = 0.3
+    ARRIVAL_TOL = 0.2
+    NUM_RACING_LAPS = 2
+
+    def __init__(self, measurements):
+        self.waypoints, self.wp_labels = self._build_waypoints(measurements)
+        self.current_wp = 0
+        print(f"[RACING] Built {len(self.waypoints)} waypoints for {self.NUM_RACING_LAPS} racing laps")
+        print(f"[RACING] Next: {self.wp_labels[0]}")
+
+    def _build_waypoints(self, measurements):
+        waypoints = []
+        labels = []
+        for lap in range(self.NUM_RACING_LAPS):
+            for i, m in enumerate(measurements):
+                center = m['center']
+                normal = m['normal']
+                waypoints.append(center + normal * self.APPROACH_DIST)
+                labels.append(f"Lap {lap + 2} Gate {i} approach")
+                waypoints.append(center - normal * self.EXIT_DIST)
+                labels.append(f"Lap {lap + 2} Gate {i} exit")
+        # Final: fly toward gate 0 area to cross into segment 0 and stop timer
+        first = measurements[0]
+        waypoints.append(first['center'] + first['normal'] * 0.5)
+        labels.append("Return to start zone")
+        return waypoints, labels
+
+    def execute(self, drone, tracker, dt):
+        if self.current_wp >= len(self.waypoints):
+            pos = self.waypoints[-1]
+            print("[RACING] All laps complete!")
+            return [pos[0], pos[1], pos[2], drone.yaw], DoneState(pos, drone.yaw)
+
+        target = self.waypoints[self.current_wp]
+        direction = target - drone.pos
+        dist = np.linalg.norm(direction)
+        target_yaw = np.arctan2(direction[1], direction[0])
+
+        if dist < self.ARRIVAL_TOL:
+            print(f"[RACING] Reached: {self.wp_labels[self.current_wp]}")
+            self.current_wp += 1
+            if self.current_wp < len(self.waypoints):
+                target = self.waypoints[self.current_wp]
+                direction = target - drone.pos
+                target_yaw = np.arctan2(direction[1], direction[0])
+                print(f"[RACING] Next: {self.wp_labels[self.current_wp]}")
+            else:
+                pos = self.waypoints[-1]
+                print("[RACING] All laps complete!")
+                return [pos[0], pos[1], pos[2], drone.yaw], DoneState(pos, drone.yaw)
+
+        return [target[0], target[1], target[2], target_yaw], None
+
+
 class DoneState(State):
     def __init__(self, target_pos, target_yaw):
         self.target_pos = target_pos
@@ -492,7 +550,7 @@ class MyAssignment:
         drone = DroneState.from_sensor_data(sensor_data)
 
         # Detection runs only during states that need it (not during takeoff, passing through, or done)
-        if not isinstance(self.state, (TakeoffState, PassingThroughState, RepositioningState, DoneState)):
+        if not isinstance(self.state, (TakeoffState, PassingThroughState, RepositioningState, RacingState, DoneState)):
             corners_world, _ = self.detector.detect(camera_data, drone)
             if corners_world is not None:
                 self.tracker.process_detection(corners_world)
@@ -504,8 +562,8 @@ class MyAssignment:
         if next_state is not None:
             self.state = next_state
 
-        # Clamping runs for all states except takeoff
-        if not isinstance(prev_state, TakeoffState):
+        # Clamping runs for all states except takeoff and racing
+        if not isinstance(prev_state, (TakeoffState, RacingState)):
             cmd = clamp_control_command(cmd, drone)
 
         return cmd
