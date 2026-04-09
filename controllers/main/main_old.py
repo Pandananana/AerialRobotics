@@ -17,19 +17,6 @@ import threading
 exp_num = 4                    # 0: Coordinate Transformation, 1: PID Tuning, 2: Kalman Filter, 3: Motion Planning, 4: Project
 control_style = 'path_planner'      # 'keyboard' or 'path_planner'
 rand_env = True                # Randomise the environment
-env_name = None                # Set to an environment name to replay it, None for random
-environments = {
-    "wrong_gate_direction_and_detection_1": 1746958632,
-    "wrong_gate_direction_and_detection_2": 1506510396,
-    "wrong_gate_direction_and_detection_3": 500296618,
-    "skip_gate_1": 867824756,
-    "skip_gate_2": 1433458171,
-    "skip_gate_3": 341927265,
-    "skip_gate_4": 1915306084,
-    "skip_gate_5": 1077235544,
-    "orthogonal_gate_1": 2134677595,
-
-}
 
 # Global variables for handling threads
 latest_sensor_data = None
@@ -185,14 +172,6 @@ class CrazyflieInDroneDome(Supervisor):
         
             # Randomise the positions of the drone and gates
             if rand_env:
-                if env_name is not None:
-                    seed = environments[env_name]
-                    print(f"[ENV] Loading environment '{env_name}' (seed: {seed})")
-                else:
-                    seed = random.randint(0, 2**31 - 1)
-                    print(f"[ENV] Random environment (seed: {seed})")
-                random.seed(seed)
-                np.random.seed(seed)
                 self.randomise_positions()
 
             # Get the position, size, and orientation of each of the gates
@@ -645,45 +624,6 @@ class CrazyflieInDroneDome(Supervisor):
         # Update drone states in simulation
         super().step(self.timestep)
 
-# Manage corner marker nodes in the Webots scene for visualizing gate predictions
-marker_node_ids = []
-
-def update_corner_markers(drone, corners_world):
-    """Add or update 4 sphere markers in Webots at the predicted gate corner positions."""
-    global marker_node_ids
-
-    # Remove old markers
-    for node_id in marker_node_ids:
-        node = drone.getFromId(node_id)
-        if node is not None:
-            node.remove()
-    marker_node_ids.clear()
-
-    if corners_world is None:
-        return
-
-    root_children = drone.getRoot().getField('children')
-    colors = ["1 0 0", "0 1 0", "0 0 1", "1 1 0"]  # TL=red, TR=green, BR=blue, BL=yellow
-    labels = ["TL", "TR", "BR", "BL"]
-    for i, pt in enumerate(corners_world):
-        node_str = (
-            f'DEF CORNER_{labels[i]} Solid {{'
-            f' translation {pt[0]:.4f} {pt[1]:.4f} {pt[2]:.4f}'
-            f' children ['
-            f'  Shape {{'
-            f'   appearance PBRAppearance {{ emissiveColor {colors[i]} metalness 0 }}'
-            f'   geometry Sphere {{ radius 0.03 }}'
-            f'  }}'
-            f' ]'
-            f' name "corner_{labels[i]}"'
-            f'}}'
-        )
-        root_children.importMFNodeFromString(-1, node_str)
-        # Get the node we just added (last child)
-        node = root_children.getMFNode(root_children.getCount() - 1)
-        marker_node_ids.append(node.getId())
-
-
 # A thread that runs the path planner in parallel with the simulation
 def path_planner_thread(drone):
     global latest_sensor_data, latest_camera_data, current_setpoint, running
@@ -717,10 +657,7 @@ def path_planner_thread(drone):
             last_planner_time = current_time
 
             new_setpoint = assignment.get_command(sensor_data_copy, camera_data_copy, dt_planner)
-
-            # Visualize predicted gate corners in Webots
-            update_corner_markers(drone, assignment._controller.predicted_corners_world)
-
+            
             with setpoint_lock:
                 current_setpoint = new_setpoint
 
@@ -814,6 +751,5 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         running = False
         planner_thread.join()
-
 
 
