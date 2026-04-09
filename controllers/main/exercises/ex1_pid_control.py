@@ -147,24 +147,19 @@ class quadrotor_controller():
         R_body_to_inertial = R_current.as_matrix()  # Rotation from body to inertial frame
         R_inertial_to_body = R_body_to_inertial.T  # Inverse (transpose for rotation matrices)
 
-        # Rotate velocity setpoint into body frame
-        vel_setpoint_inertial = np.array([vel_x_setpoint_inertial, vel_y_setpoint_inertial, vel_z_setpoint_inertial])
-        vel_setpoint = R_inertial_to_body @ vel_setpoint_inertial  # Rotate into body frame
-        
-        # For tuning
-        if self.tuning_level == "vel_xy":
-            vel_y_setpoint = self.tuning(-self.limits["L_vel_xy"], self.limits["L_vel_xy"], 3, dt, vel_y_setpoint, sensor_data["v_y"], "y velocity [m/s]")
-        if self.tuning_level == "vel_z":
-            vel_z_setpoint = self.tuning(-self.limits["L_vel_z"], self.limits["L_vel_z"], 2, dt, vel_z_setpoint, sensor_data["v_z"], "z velocity [m/s]")
+        # XY velocity control in inertial frame (decouples from yaw)
+        self.pid_vel_x.set_setpoint(vel_x_setpoint_inertial)
+        self.pid_vel_y.set_setpoint(vel_y_setpoint_inertial)
+        acc_x_inertial = self.pid_vel_x.call(sensor_data["v_x"], dt=dt)
+        acc_y_inertial = self.pid_vel_y.call(sensor_data["v_y"], dt=dt)
 
-        # Put setpoint of PID controller
-        self.pid_vel_x.set_setpoint(vel_setpoint[0])
-        self.pid_vel_y.set_setpoint(vel_setpoint[1])
-        self.pid_vel_z.set_setpoint(vel_setpoint[2])
-        
-        # Call PID controller (use sensor_data["v_forward"], sensor_data["v_left"], sensor_data["v_up"])
-        acc_x_setpoint = self.pid_vel_x.call(sensor_data["v_forward"], dt=dt)
-        acc_y_setpoint = self.pid_vel_y.call(sensor_data["v_left"], dt=dt)
+        # Rotate XY acceleration from inertial to body frame
+        acc_body_xy = R_inertial_to_body @ np.array([acc_x_inertial, acc_y_inertial, 0.0])
+        acc_x_setpoint = acc_body_xy[0]
+        acc_y_setpoint = acc_body_xy[1]
+
+        # Z velocity control (body frame, unchanged)
+        self.pid_vel_z.set_setpoint(vel_z_setpoint_inertial)
         acc_z_setpoint = self.pid_vel_z.call(sensor_data["v_up"], dt=dt)
 
         yaw_setpoint = setpoint[3]
