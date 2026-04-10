@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 
 import cv2
 import numpy as np
+from scipy.interpolate import CubicSpline
 
 # The available ground truth state measurements can be accessed by calling sensor_data[item]. All values of "item" are provided as defined in main.py within the function read_sensors.
 # The "item" values that you may later retrieve for the hardware project are:
@@ -70,7 +71,7 @@ def compute_gate_normal(corners):
     return normal / norm_len
 
 
-def clamp_control_command(control_command, drone, max_speed=1, max_yaw_rate=0.3):
+def clamp_control_command(control_command, drone, max_speed=2, max_yaw_rate=0.4):
     """Clamp position displacement and yaw change to limit drone speed and rotation."""
     x_t, y_t, z_t, yaw_t = control_command
     displacement = np.array([x_t, y_t, z_t]) - drone.pos
@@ -285,6 +286,66 @@ class GateTracker:
 
 
 
+class SplinePath:
+    """Arc-length parameterized cubic spline through 3D waypoints.
+
+    After construction, query position_at(s) and tangent_at(s) where s is
+    a distance in metres along the curve, from 0 to total_length.
+    """
+
+    def __init__(self, waypoints, num_samples=2000):
+        pts = np.asarray(waypoints)  # (N, 3)
+        n = len(pts)
+        t_knots = np.arange(n, dtype=float)
+
+        # Fit a natural cubic spline per axis, parameterized by knot index
+        self._cs_x = CubicSpline(t_knots, pts[:, 0], bc_type='natural')
+        self._cs_y = CubicSpline(t_knots, pts[:, 1], bc_type='natural')
+        self._cs_z = CubicSpline(t_knots, pts[:, 2], bc_type='natural')
+
+        # Build arc-length table by densely sampling the spline
+        t_fine = np.linspace(0, n - 1, num_samples)
+        x = self._cs_x(t_fine)
+        y = self._cs_y(t_fine)
+        z = self._cs_z(t_fine)
+
+        dx = np.diff(x)
+        dy = np.diff(y)
+        dz = np.diff(z)
+        ds = np.sqrt(dx**2 + dy**2 + dz**2)
+
+        self._arc_lengths = np.concatenate([[0.0], np.cumsum(ds)])  # (num_samples,)
+        self._t_fine = t_fine
+        self.total_length = self._arc_lengths[-1]
+
+    def _s_to_t(self, s):
+        """Map arc-length s to spline parameter t via linear interpolation."""
+        s = np.clip(s, 0.0, self.total_length)
+        return np.interp(s, self._arc_lengths, self._t_fine)
+
+    def position_at(self, s):
+        """Return [x, y, z] at arc-length distance s."""
+        t = self._s_to_t(s)
+        return np.array([self._cs_x(t), self._cs_y(t), self._cs_z(t)])
+
+    def tangent_at(self, s):
+        """Return unit tangent vector at arc-length distance s."""
+        t = self._s_to_t(s)
+        dx = float(self._cs_x(t, 1))
+        dy = float(self._cs_y(t, 1))
+        dz = float(self._cs_z(t, 1))
+        tang = np.array([dx, dy, dz])
+        norm = np.linalg.norm(tang)
+        if norm < 1e-9:
+            return np.array([1.0, 0.0, 0.0])
+        return tang / norm
+
+    def yaw_at(self, s):
+        """Return yaw angle (rad) from the tangent direction at arc-length s."""
+        t = self.tangent_at(s)
+        return np.arctan2(t[1], t[0])
+
+
 class State(ABC):
     """Base class for flight states. Returns (control_command, next_state_or_None)."""
 
@@ -428,10 +489,11 @@ class PassingThroughState(State):
         if dist < 0.05:
             tracker.advance_gate()
             if tracker.all_gates_measured:
-                print("[GATE] All 5 gates measured! Entering racing mode.")
+                print("[GATE] All 5 gates measured! Computing spline path.")
                 for i, m in enumerate(tracker.measurements):
                     print(f"  Gate {i}: center={m['center']}, normal={m['normal']}")
-                return cmd, RacingState(tracker.measurements)
+                spline = build_racing_spline(drone.pos, tracker.measurements)
+                return cmd, RacingState(spline)
             else:
                 print(f"[GATE] Repositioning before searching for gate {tracker.current_gate_index}...")
                 return [self.target_pos[0], self.target_pos[1], self.target_pos[2], drone.yaw], RepositioningState(drone)
@@ -469,62 +531,64 @@ class RepositioningState(State):
         return cmd, None
 
 
+def build_racing_spline(start_pos, measurements, num_laps=2):
+    """Build a SplinePath starting from start_pos through all gates for num_laps."""
+    waypoints = [np.array(start_pos)]
+    for lap in range(num_laps):
+        for m in measurements:
+            n = m['normal']
+            c = m['center']
+            waypoints.append(c + n * 0.5)
+            waypoints.append(c - n * 0.5)
+    # Final: return to gate 0 area to stop timer
+    m0 = measurements[0]
+    waypoints.append(m0['center'] + m0['normal'] * 0.5)
+    waypoints.append(m0['center'] - m0['normal'] * 0.5)
+    spline = SplinePath(waypoints)
+    print(f"[RACING] Spline computed: {spline.total_length:.1f}m through {len(waypoints)} waypoints")
+    return spline
+
+
 class RacingState(State):
-    """Fly through all gates at speed using known positions from lap 1."""
+    """Fly through all gates at speed using a precomputed spline path."""
 
-    APPROACH_DIST = 0.3
-    EXIT_DIST = 0.3
-    ARRIVAL_TOL = 0.2
-    NUM_RACING_LAPS = 2
+    LOOKAHEAD = 1.0  # how far ahead on the spline to place the setpoint (metres)
 
-    def __init__(self, measurements):
-        self.waypoints, self.wp_labels = self._build_waypoints(measurements)
-        self.current_wp = 0
-        print(f"[RACING] Built {len(self.waypoints)} waypoints for {self.NUM_RACING_LAPS} racing laps")
-        print(f"[RACING] Next: {self.wp_labels[0]}")
-
-    def _build_waypoints(self, measurements):
-        waypoints = []
-        labels = []
-        for lap in range(self.NUM_RACING_LAPS):
-            for i, m in enumerate(measurements):
-                center = m['center']
-                normal = m['normal']
-                waypoints.append(center + normal * self.APPROACH_DIST)
-                labels.append(f"Lap {lap + 2} Gate {i} approach")
-                waypoints.append(center - normal * self.EXIT_DIST)
-                labels.append(f"Lap {lap + 2} Gate {i} exit")
-        # Final: fly toward gate 0 area to cross into segment 0 and stop timer
-        first = measurements[0]
-        waypoints.append(first['center'] + first['normal'] * 0.5)
-        labels.append("Return to start zone")
-        return waypoints, labels
+    def __init__(self, spline):
+        self.spline = spline
+        self.cursor = 0.0  # current arc-length position on the spline
+        print(f"[RACING] Following spline path ({self.spline.total_length:.1f}m)")
 
     def execute(self, drone, tracker, dt):
-        if self.current_wp >= len(self.waypoints):
-            pos = self.waypoints[-1]
+        self.cursor = self._advance_cursor(drone.pos)
+        target_s = min(self.cursor + self.LOOKAHEAD, self.spline.total_length)
+
+        target = self.spline.position_at(target_s)
+        target_yaw = self.spline.yaw_at(target_s)
+
+        if self.cursor >= self.spline.total_length - 0.5:
             print("[RACING] All laps complete!")
-            return [pos[0], pos[1], pos[2], drone.yaw], DoneState(pos, drone.yaw)
-
-        target = self.waypoints[self.current_wp]
-        direction = target - drone.pos
-        dist = np.linalg.norm(direction)
-        target_yaw = np.arctan2(direction[1], direction[0])
-
-        if dist < self.ARRIVAL_TOL:
-            print(f"[RACING] Reached: {self.wp_labels[self.current_wp]}")
-            self.current_wp += 1
-            if self.current_wp < len(self.waypoints):
-                target = self.waypoints[self.current_wp]
-                direction = target - drone.pos
-                target_yaw = np.arctan2(direction[1], direction[0])
-                print(f"[RACING] Next: {self.wp_labels[self.current_wp]}")
-            else:
-                pos = self.waypoints[-1]
-                print("[RACING] All laps complete!")
-                return [pos[0], pos[1], pos[2], drone.yaw], DoneState(pos, drone.yaw)
+            return [target[0], target[1], target[2], target_yaw], DoneState(target, target_yaw)
 
         return [target[0], target[1], target[2], target_yaw], None
+
+    def _advance_cursor(self, drone_pos, search_step=0.1, search_window=3.0):
+        """Advance the cursor to the point on the spline nearest the drone,
+        searching only forward from the current cursor to avoid going backwards."""
+        best_s = self.cursor
+        best_dist = np.linalg.norm(self.spline.position_at(self.cursor) - drone_pos)
+
+        s = self.cursor + search_step
+        end_s = min(self.cursor + search_window, self.spline.total_length)
+        while s <= end_s:
+            pos = self.spline.position_at(s)
+            d = np.linalg.norm(pos - drone_pos)
+            if d < best_dist:
+                best_dist = d
+                best_s = s
+            s += search_step
+
+        return best_s
 
 
 class DoneState(State):
