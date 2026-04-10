@@ -34,6 +34,7 @@ from scipy.interpolate import CubicSpline
 class DroneState:
     """Typed wrapper around the raw sensor_data dict."""
     pos: np.ndarray  # [x, y, z] global
+    vel: np.ndarray  # [v_x, v_y, v_z] global
     yaw: float
     roll: float
     pitch: float
@@ -42,6 +43,7 @@ class DroneState:
     def from_sensor_data(cls, sd):
         return cls(
             pos=np.array([sd['x_global'], sd['y_global'], sd['z_global']]),
+            vel=np.array([sd['v_x'], sd['v_y'], sd['v_z']]),
             yaw=sd['yaw'],
             roll=sd['roll'],
             pitch=sd['pitch'],
@@ -553,13 +555,22 @@ class RacingState(State):
     """Fly through all gates at speed using a precomputed spline path."""
 
     LOOKAHEAD = 1.0  # how far ahead on the spline to place the setpoint (metres)
+    SPEED_INTERVAL_S = 2.0
 
     def __init__(self, spline):
         self.spline = spline
         self.cursor = 0.0  # current arc-length position on the spline
+        self.interval_elapsed = 0.0
+        self.interval_max_speed = 0.0
+        self.interval_index = 0
         print(f"[RACING] Following spline path ({self.spline.total_length:.1f}m)")
 
     def execute(self, drone, tracker, dt):
+        speed_mag = float(np.linalg.norm(drone.vel))
+        self.interval_max_speed = max(self.interval_max_speed, speed_mag)
+        self.interval_elapsed += dt
+        self._flush_completed_speed_intervals(speed_mag)
+
         self.cursor = self._advance_cursor(drone.pos)
         target_s = min(self.cursor + self.LOOKAHEAD, self.spline.total_length)
 
@@ -567,6 +578,7 @@ class RacingState(State):
         target_yaw = self.spline.yaw_at(target_s)
 
         if self.cursor >= self.spline.total_length - 0.5:
+            self._print_final_partial_speed_interval()
             print("[RACING] All laps complete!")
             return [target[0], target[1], target[2], target_yaw], DoneState(target, target_yaw)
 
