@@ -584,6 +584,28 @@ class RacingState(State):
 
         return [target[0], target[1], target[2], target_yaw], None
 
+    def _flush_completed_speed_intervals(self, current_speed):
+        while self.interval_elapsed >= self.SPEED_INTERVAL_S:
+            self.interval_index += 1
+            print(
+                f"[RACING] Interval {self.interval_index} "
+                f"({self.SPEED_INTERVAL_S:.1f}s) max speed: {self.interval_max_speed:.2f} m/s"
+            )
+            self.interval_elapsed -= self.SPEED_INTERVAL_S
+            self.interval_max_speed = current_speed if self.interval_elapsed > 0.0 else 0.0
+
+    def _print_final_partial_speed_interval(self):
+        if self.interval_elapsed <= 1e-6:
+            return
+
+        self.interval_index += 1
+        print(
+            f"[RACING] Interval {self.interval_index} "
+            f"({self.interval_elapsed:.1f}s) max speed: {self.interval_max_speed:.2f} m/s"
+        )
+        self.interval_elapsed = 0.0
+        self.interval_max_speed = 0.0
+
     def _advance_cursor(self, drone_pos, search_step=0.1, search_window=3.0):
         """Advance the cursor to the point on the spline nearest the drone,
         searching only forward from the current cursor to avoid going backwards."""
