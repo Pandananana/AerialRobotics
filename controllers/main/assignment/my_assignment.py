@@ -486,7 +486,6 @@ class SearchingState(State):
 
             direction = center - drone.pos
             target_yaw = np.arctan2(direction[1], direction[0])
-            print(f"[GATE {tracker.current_gate_index}] Detected. Flying to 1m in front.")
             return [drone.pos[0], drone.pos[1], drone.pos[2], target_yaw], ApproachingState(target_pos, center)
         else:
             self.target_yaw = drone.yaw + 0.3
@@ -536,7 +535,6 @@ class ApproachingState(State):
         if dist < 0.05 and yaw_error < 0.05:
             tracker.reset_filter()
             print("Resetting gate filter")
-            print(f"[GATE {tracker.current_gate_index}] Arrived. Measuring for 1s...")
             return cmd, MeasuringState(self.target_pos.copy(), target_yaw)
 
         return cmd, None
@@ -561,16 +559,11 @@ class MeasuringState(State):
         if self.wait_timer >= 1.0 and tracker.corners is not None:
             tracker.record_measurement()
             center = np.array(tracker.center)
-            i = tracker.current_gate_index
-            print(f"[GATE {i}] === Measured at {center} ===")
-            for j, label in enumerate(["TL", "TR", "BR", "BL"]):
-                print(f"[GATE {i}]   Corner {label}: {tracker.measurements[-1]['corners'][j]}")
 
             direction = center - drone.pos
             direction_norm = direction / np.linalg.norm(direction)
             pass_target = center + direction_norm * 0.2
             pass_yaw = np.arctan2(direction_norm[1], direction_norm[0])
-            print(f"[GATE {i}] Passing through to {pass_target}")
             return [pass_target[0], pass_target[1], pass_target[2], pass_yaw], PassingThroughState(pass_target, pass_yaw)
 
         return cmd, None
@@ -594,7 +587,6 @@ class PassingThroughState(State):
                 trajectory = build_racing_trajectory(drone, tracker.measurements)
                 return cmd, RacingState(trajectory)
             else:
-                print(f"[GATE] Repositioning before searching for gate {tracker.current_gate_index}...")
                 return [self.target_pos[0], self.target_pos[1], self.target_pos[2], drone.yaw], RepositioningState(drone)
 
         return cmd, None
@@ -624,7 +616,6 @@ class RepositioningState(State):
         cmd = [self.target_pos[0], self.target_pos[1], self.target_pos[2], self.target_yaw]
 
         if dist < 0.1:
-            print(f"[GATE] Repositioned. Searching for gate {tracker.current_gate_index}...")
             return cmd, SearchingState()
 
         return cmd, None
