@@ -160,7 +160,7 @@ class quadrotor_controller():
 
         # Z velocity control (body frame, unchanged)
         self.pid_vel_z.set_setpoint(vel_z_setpoint_inertial)
-        acc_z_setpoint = self.pid_vel_z.call(sensor_data["v_up"], dt=dt)
+        acc_z_setpoint = self.pid_vel_z.call(sensor_data["v_z"], dt=dt)
 
         yaw_setpoint = setpoint[3]
         return self.acceleration_and_yaw_to_pwm(dt, [acc_x_setpoint, acc_y_setpoint, acc_z_setpoint], yaw_setpoint, sensor_data)
