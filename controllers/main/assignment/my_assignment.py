@@ -4,7 +4,6 @@ from abc import ABC, abstractmethod
 
 import cv2
 import numpy as np
-from scipy.interpolate import CubicSpline
 
 # The available ground truth state measurements can be accessed by calling sensor_data[item]. All values of "item" are provided as defined in main.py within the function read_sensors.
 # The "item" values that you may later retrieve for the hardware project are:
@@ -35,6 +34,7 @@ class DroneState:
     """Typed wrapper around the raw sensor_data dict."""
     pos: np.ndarray  # [x, y, z] global
     vel: np.ndarray  # [v_x, v_y, v_z] global
+    acc: np.ndarray  # [ax, ay, az] global (gravity-compensated)
     yaw: float
     roll: float
     pitch: float
@@ -44,6 +44,7 @@ class DroneState:
         return cls(
             pos=np.array([sd['x_global'], sd['y_global'], sd['z_global']]),
             vel=np.array([sd['v_x'], sd['v_y'], sd['v_z']]),
+            acc=np.array([sd['ax_global'], sd['ay_global'], sd['az_global']]),
             yaw=sd['yaw'],
             roll=sd['roll'],
             pitch=sd['pitch'],
@@ -288,64 +289,160 @@ class GateTracker:
 
 
 
-class SplinePath:
-    """Arc-length parameterized cubic spline through 3D waypoints.
+class PolyTrajectory:
+    """Minimum-jerk 5th-order polynomial trajectory through 3D waypoints, time-parameterized.
 
-    After construction, query position_at(s) and tangent_at(s) where s is
-    a distance in metres along the curve, from 0 to total_length.
+    Segment times are allocated proportional to segment length. A final time t_f is
+    tuned so the sampled trajectory respects per-axis velocity and acceleration limits.
+    Position/velocity/acceleration/jerk/snap are C4-continuous at internal waypoints;
+    initial velocity/acceleration match the caller-supplied BCs (typically the drone's
+    current state), and final velocity/acceleration default to zero.
     """
 
-    def __init__(self, waypoints, num_samples=2000):
-        pts = np.asarray(waypoints)  # (N, 3)
-        n = len(pts)
-        t_knots = np.arange(n, dtype=float)
+    # PID clamps at L_vel_xy=2.0, L_vel_z=0.75; leave margin. L_acc_rp=pi/6 tilt gives
+    # ~g*tan(pi/6) ≈ 5.66 m/s² horizontal acceleration.
+    VEL_LIM_XY = 1.8
+    VEL_LIM_Z = 0.7
+    ACC_LIM_XY = 5.0
+    ACC_LIM_Z = 5.0
+    DISC_STEPS = 20
 
-        # Fit a natural cubic spline per axis, parameterized by knot index
-        self._cs_x = CubicSpline(t_knots, pts[:, 0], bc_type='natural')
-        self._cs_y = CubicSpline(t_knots, pts[:, 1], bc_type='natural')
-        self._cs_z = CubicSpline(t_knots, pts[:, 2], bc_type='natural')
+    def __init__(self, waypoints, v_init, a_init, v_final=None, a_final=None):
+        self.waypoints = np.asarray(waypoints, dtype=float)
+        self.m = len(self.waypoints)
+        self.v_init = np.asarray(v_init, dtype=float)
+        self.a_init = np.asarray(a_init, dtype=float)
+        self.v_final = np.zeros(3) if v_final is None else np.asarray(v_final, dtype=float)
+        self.a_final = np.zeros(3) if a_final is None else np.asarray(a_final, dtype=float)
 
-        # Build arc-length table by densely sampling the spline
-        t_fine = np.linspace(0, n - 1, num_samples)
-        x = self._cs_x(t_fine)
-        y = self._cs_y(t_fine)
-        z = self._cs_z(t_fine)
+        diffs = np.diff(self.waypoints, axis=0)
+        self._seg_lengths = np.linalg.norm(diffs, axis=1)
+        self.total_length = float(self._seg_lengths.sum())
 
-        dx = np.diff(x)
-        dy = np.diff(y)
-        dz = np.diff(z)
-        ds = np.sqrt(dx**2 + dy**2 + dz**2)
+        # Conservative starting guess — will be scaled up by _tune to respect limits.
+        t_f_guess = self.total_length / (0.5 * self.VEL_LIM_XY)
+        self.total_time = self._tune(t_f_guess)
+        self._solve(self.total_time)
 
-        self._arc_lengths = np.concatenate([[0.0], np.cumsum(ds)])  # (num_samples,)
-        self._t_fine = t_fine
-        self.total_length = self._arc_lengths[-1]
+    @staticmethod
+    def _poly_matrix(t):
+        # Row k = k-th derivative of [t^5, t^4, t^3, t^2, t, 1] · coeffs.
+        return np.array([
+            [t**5,    t**4,    t**3,    t**2, t, 1],
+            [5*t**4,  4*t**3,  3*t**2,  2*t,  1, 0],
+            [20*t**3, 12*t**2, 6*t,     2,    0, 0],
+            [60*t**2, 24*t,    6,       0,    0, 0],
+            [120*t,   24,      0,       0,    0, 0],
+        ])
 
-    def _s_to_t(self, s):
-        """Map arc-length s to spline parameter t via linear interpolation."""
-        s = np.clip(s, 0.0, self.total_length)
-        return np.interp(s, self._arc_lengths, self._t_fine)
+    def _seg_times(self, t_f):
+        # Allocate time proportional to segment length.
+        return t_f * self._seg_lengths / self._seg_lengths.sum()
 
-    def position_at(self, s):
-        """Return [x, y, z] at arc-length distance s."""
-        t = self._s_to_t(s)
-        return np.array([self._cs_x(t), self._cs_y(t), self._cs_z(t)])
+    def _solve(self, t_f):
+        seg_times = self._seg_times(t_f)
+        self.times = np.concatenate([[0.0], np.cumsum(seg_times)])
+        m = self.m
+        n = 6 * (m - 1)
+        self.coeffs = np.zeros((n, 3))
+        A_0 = self._poly_matrix(0.0)
 
-    def tangent_at(self, s):
-        """Return unit tangent vector at arc-length distance s."""
-        t = self._s_to_t(s)
-        dx = float(self._cs_x(t, 1))
-        dy = float(self._cs_y(t, 1))
-        dz = float(self._cs_z(t, 1))
-        tang = np.array([dx, dy, dz])
-        norm = np.linalg.norm(tang)
-        if norm < 1e-9:
-            return np.array([1.0, 0.0, 0.0])
-        return tang / norm
+        for dim in range(3):
+            A = np.zeros((n, n))
+            b = np.zeros(n)
+            pos = self.waypoints[:, dim]
 
-    def yaw_at(self, s):
-        """Return yaw angle (rad) from the tangent direction at arc-length s."""
-        t = self.tangent_at(s)
-        return np.arctan2(t[1], t[0])
+            if m == 2:
+                # Single segment: all 6 BCs are explicit.
+                A_f = self._poly_matrix(seg_times[0])
+                A[0, :6] = A_0[0]; b[0] = pos[0]
+                A[1, :6] = A_f[0]; b[1] = pos[1]
+                A[2, :6] = A_0[1]; b[2] = self.v_init[dim]
+                A[3, :6] = A_f[1]; b[3] = self.v_final[dim]
+                A[4, :6] = A_0[2]; b[4] = self.a_init[dim]
+                A[5, :6] = A_f[2]; b[5] = self.a_final[dim]
+            else:
+                row = 0
+                for i in range(m - 1):
+                    A_f = self._poly_matrix(seg_times[i])
+                    if i == 0:
+                        A[row, :6] = A_0[0]; b[row] = pos[0]; row += 1
+                        A[row, :6] = A_f[0]; b[row] = pos[1]; row += 1
+                        A[row, :6] = A_0[1]; b[row] = self.v_init[dim]; row += 1
+                        A[row, :6] = A_0[2]; b[row] = self.a_init[dim]; row += 1
+                        # Continuity of vel/acc/jerk/snap at end of segment 0.
+                        A[row:row+4, :6] = A_f[1:]
+                        A[row:row+4, 6:12] = -A_0[1:]
+                        row += 4
+                    elif i < m - 2:
+                        A[row, i*6:(i+1)*6] = A_0[0]; b[row] = pos[i]; row += 1
+                        A[row, i*6:(i+1)*6] = A_f[0]; b[row] = pos[i+1]; row += 1
+                        A[row:row+4, i*6:(i+1)*6] = A_f[1:]
+                        A[row:row+4, (i+1)*6:(i+2)*6] = -A_0[1:]
+                        row += 4
+                    else:
+                        A[row, i*6:(i+1)*6] = A_0[0]; b[row] = pos[i]; row += 1
+                        A[row, i*6:(i+1)*6] = A_f[0]; b[row] = pos[i+1]; row += 1
+                        A[row, i*6:(i+1)*6] = A_f[1]; b[row] = self.v_final[dim]; row += 1
+                        A[row, i*6:(i+1)*6] = A_f[2]; b[row] = self.a_final[dim]; row += 1
+
+            self.coeffs[:, dim] = np.linalg.solve(A, b)
+
+    def _tune(self, t_f, max_iters=10, safety=1.05, tol=0.01):
+        """Scale t_f so the sampled trajectory just respects velocity/acceleration limits.
+
+        Scaling time by k reparameterizes max|v| by 1/k and max|a| by 1/k²; iterate to
+        converge (BCs on initial v/a break exact invariance).
+        """
+        for _ in range(max_iters):
+            self._solve(t_f)
+            v_xy, v_z, a_xy, a_z = self._sample_limits()
+            k = max(
+                v_xy / self.VEL_LIM_XY,
+                v_z / self.VEL_LIM_Z,
+                np.sqrt(a_xy / self.ACC_LIM_XY),
+                np.sqrt(a_z / self.ACC_LIM_Z),
+            )
+            new_t_f = t_f * k * safety
+            if abs(new_t_f - t_f) / t_f < tol:
+                return t_f
+            t_f = new_t_f
+        return t_f
+
+    def _sample_limits(self):
+        ts = np.linspace(0.0, self.times[-1], self.DISC_STEPS * self.m)
+        v_xy_max = v_z_max = a_xy_max = a_z_max = 0.0
+        for t in ts:
+            seg, t_local = self._seg_index(t)
+            M = self._poly_matrix(t_local)
+            c = self.coeffs[seg*6:(seg+1)*6, :]
+            v = M[1] @ c
+            a = M[2] @ c
+            v_xy_max = max(v_xy_max, float(np.hypot(v[0], v[1])))
+            v_z_max = max(v_z_max, float(abs(v[2])))
+            a_xy_max = max(a_xy_max, float(np.hypot(a[0], a[1])))
+            a_z_max = max(a_z_max, float(abs(a[2])))
+        return v_xy_max, v_z_max, a_xy_max, a_z_max
+
+    def _seg_index(self, t):
+        t_clamped = float(np.clip(t, 0.0, self.times[-1]))
+        seg = int(min(max(np.searchsorted(self.times, t_clamped) - 1, 0), self.m - 2))
+        return seg, t_clamped - self.times[seg]
+
+    def position_at(self, t):
+        seg, t_local = self._seg_index(t)
+        return self._poly_matrix(t_local)[0] @ self.coeffs[seg*6:(seg+1)*6, :]
+
+    def velocity_at(self, t):
+        seg, t_local = self._seg_index(t)
+        return self._poly_matrix(t_local)[1] @ self.coeffs[seg*6:(seg+1)*6, :]
+
+    def yaw_at(self, t):
+        """Heading from horizontal velocity direction."""
+        v = self.velocity_at(t)
+        if np.hypot(v[0], v[1]) < 1e-6:
+            return 0.0
+        return float(np.arctan2(v[1], v[0]))
 
 
 class State(ABC):
@@ -491,11 +588,11 @@ class PassingThroughState(State):
         if dist < 0.05:
             tracker.advance_gate()
             if tracker.all_gates_measured:
-                print("[GATE] All 5 gates measured! Computing spline path.")
+                print("[GATE] All 5 gates measured! Computing racing trajectory.")
                 for i, m in enumerate(tracker.measurements):
                     print(f"  Gate {i}: center={m['center']}, normal={m['normal']}")
-                spline = build_racing_spline(drone.pos, tracker.measurements)
-                return cmd, RacingState(spline)
+                trajectory = build_racing_trajectory(drone, tracker.measurements)
+                return cmd, RacingState(trajectory)
             else:
                 print(f"[GATE] Repositioning before searching for gate {tracker.current_gate_index}...")
                 return [self.target_pos[0], self.target_pos[1], self.target_pos[2], drone.yaw], RepositioningState(drone)
@@ -533,37 +630,45 @@ class RepositioningState(State):
         return cmd, None
 
 
-def build_racing_spline(start_pos, measurements, num_laps=2):
-    """Build a SplinePath starting from start_pos through all gates for num_laps."""
-    waypoints = [np.array(start_pos)]
-    for lap in range(num_laps):
+def build_racing_trajectory(drone, measurements, num_laps=2):
+    """Build a PolyTrajectory from the drone's current state through all gates."""
+    waypoints = [drone.pos.copy()]
+    for _ in range(num_laps):
         for m in measurements:
-            n = m['normal']
-            c = m['center']
-            waypoints.append(c + n * 0.5)
-            waypoints.append(c - n * 0.5)
+            waypoints.append(m['center'] + m['normal'] * 0.5)
+            waypoints.append(m['center'] - m['normal'] * 0.5)
     # Final: return to gate 0 area to stop timer
     m0 = measurements[0]
     waypoints.append(m0['center'] + m0['normal'] * 0.5)
     waypoints.append(m0['center'] - m0['normal'] * 0.5)
-    spline = SplinePath(waypoints)
-    print(f"[RACING] Spline computed: {spline.total_length:.1f}m through {len(waypoints)} waypoints")
-    return spline
+
+    trajectory = PolyTrajectory(
+        waypoints,
+        v_init=drone.vel.copy(),
+        a_init=drone.acc.copy(),
+    )
+    print(
+        f"[RACING] Trajectory: {trajectory.total_length:.1f}m over {trajectory.total_time:.1f}s "
+        f"through {len(waypoints)} waypoints"
+    )
+    return trajectory
 
 
 class RacingState(State):
-    """Fly through all gates at speed using a precomputed spline path."""
+    """Fly through all gates along a precomputed time-parameterized polynomial trajectory."""
 
-    LOOKAHEAD = 1.0  # how far ahead on the spline to place the setpoint (metres)
     SPEED_INTERVAL_S = 2.0
 
-    def __init__(self, spline):
-        self.spline = spline
-        self.cursor = 0.0  # current arc-length position on the spline
+    def __init__(self, trajectory):
+        self.trajectory = trajectory
+        self.t_elapsed = 0.0
         self.interval_elapsed = 0.0
         self.interval_max_speed = 0.0
         self.interval_index = 0
-        print(f"[RACING] Following spline path ({self.spline.total_length:.1f}m)")
+        print(
+            f"[RACING] Following trajectory "
+            f"({trajectory.total_length:.1f}m, {trajectory.total_time:.1f}s)"
+        )
 
     def execute(self, drone, tracker, dt):
         speed_mag = float(np.linalg.norm(drone.vel))
@@ -571,17 +676,17 @@ class RacingState(State):
         self.interval_elapsed += dt
         self._flush_completed_speed_intervals(speed_mag)
 
-        self.cursor = self._advance_cursor(drone.pos)
-        target_s = min(self.cursor + self.LOOKAHEAD, self.spline.total_length)
+        self.t_elapsed += dt
 
-        target = self.spline.position_at(target_s)
-        target_yaw = self.spline.yaw_at(target_s)
-
-        if self.cursor >= self.spline.total_length - 0.5:
+        if self.t_elapsed >= self.trajectory.total_time:
             self._print_final_partial_speed_interval()
             print("[RACING] All laps complete!")
+            target = self.trajectory.position_at(self.trajectory.total_time)
+            target_yaw = self.trajectory.yaw_at(self.trajectory.total_time)
             return [target[0], target[1], target[2], target_yaw], DoneState(target, target_yaw)
 
+        target = self.trajectory.position_at(self.t_elapsed)
+        target_yaw = self.trajectory.yaw_at(self.t_elapsed)
         return [target[0], target[1], target[2], target_yaw], None
 
     def _flush_completed_speed_intervals(self, current_speed):
@@ -605,24 +710,6 @@ class RacingState(State):
         )
         self.interval_elapsed = 0.0
         self.interval_max_speed = 0.0
-
-    def _advance_cursor(self, drone_pos, search_step=0.1, search_window=3.0):
-        """Advance the cursor to the point on the spline nearest the drone,
-        searching only forward from the current cursor to avoid going backwards."""
-        best_s = self.cursor
-        best_dist = np.linalg.norm(self.spline.position_at(self.cursor) - drone_pos)
-
-        s = self.cursor + search_step
-        end_s = min(self.cursor + search_window, self.spline.total_length)
-        while s <= end_s:
-            pos = self.spline.position_at(s)
-            d = np.linalg.norm(pos - drone_pos)
-            if d < best_dist:
-                best_dist = d
-                best_s = s
-            s += search_step
-
-        return best_s
 
 
 class DoneState(State):
