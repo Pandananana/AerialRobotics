@@ -299,11 +299,12 @@ class PolyTrajectory:
     current state), and final velocity/acceleration default to zero.
     """
 
-    # PID clamps at L_vel_xy=2.0, L_vel_z=0.75; leave margin. L_acc_rp=pi/6 tilt gives
-    # ~g*tan(pi/6) ≈ 5.66 m/s² horizontal acceleration.
-    VEL_LIM_XY = 1.8
-    VEL_LIM_Z = 0.7
-    ACC_LIM_XY = 5.0
+    # PID clamps at L_vel_xy=2.0, L_vel_z=0.75. L_acc_rp=pi/6 tilt gives
+    # ~g*tan(pi/6) ≈ 5.66 m/s² horizontal acceleration. With velocity FF active in
+    # RacingState, tracking lag is small, so we can push closer to these hard limits.
+    VEL_LIM_XY = 2.5
+    VEL_LIM_Z = 1
+    ACC_LIM_XY = 6
     ACC_LIM_Z = 5.0
     DISC_STEPS = 20
 
@@ -648,6 +649,14 @@ class RacingState(State):
 
     SPEED_INTERVAL_S = 2.0
 
+    # Velocity feedforward via position-offset trick.
+    # Position PID: v_cmd = P_pos * (x_set - x). Setting x_set = x_desired + v_ff / P_pos
+    # yields v_cmd = P_pos * (x_desired - x) + v_ff, i.e. position feedback + velocity FF,
+    # without needing to plumb a separate FF channel through main.py / setpoint_to_pwm.
+    # P gains must match ex1_pid_control.py (exp_num=4 branch).
+    P_POS_XY = 1.5
+    P_POS_Z = 5.0
+
     def __init__(self, trajectory):
         self.trajectory = trajectory
         self.t_elapsed = 0.0
@@ -658,6 +667,13 @@ class RacingState(State):
             f"[RACING] Following trajectory "
             f"({trajectory.total_length:.1f}m, {trajectory.total_time:.1f}s)"
         )
+
+    def _apply_ff(self, pos, vel):
+        return np.array([
+            pos[0] + vel[0] / self.P_POS_XY,
+            pos[1] + vel[1] / self.P_POS_XY,
+            pos[2] + vel[2] / self.P_POS_Z,
+        ])
 
     def execute(self, drone, tracker, dt):
         speed_mag = float(np.linalg.norm(drone.vel))
@@ -675,8 +691,10 @@ class RacingState(State):
             return [target[0], target[1], target[2], target_yaw], DoneState(target, target_yaw)
 
         target = self.trajectory.position_at(self.t_elapsed)
+        vel_ff = self.trajectory.velocity_at(self.t_elapsed)
+        target_ff = self._apply_ff(target, vel_ff)
         target_yaw = self.trajectory.yaw_at(self.t_elapsed)
-        return [target[0], target[1], target[2], target_yaw], None
+        return [target_ff[0], target_ff[1], target_ff[2], target_yaw], None
 
     def _flush_completed_speed_intervals(self, current_speed):
         while self.interval_elapsed >= self.SPEED_INTERVAL_S:
