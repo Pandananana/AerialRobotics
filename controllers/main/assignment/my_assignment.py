@@ -635,12 +635,10 @@ def build_racing_trajectory(drone, measurements, num_laps=2):
     waypoints = [drone.pos.copy()]
     for _ in range(num_laps):
         for m in measurements:
-            waypoints.append(m['center'] + m['normal'] * 0.5)
-            waypoints.append(m['center'] - m['normal'] * 0.5)
+            waypoints.append(m['center'].copy())
     # Final: return to gate 0 area to stop timer
     m0 = measurements[0]
-    waypoints.append(m0['center'] + m0['normal'] * 0.5)
-    waypoints.append(m0['center'] - m0['normal'] * 0.5)
+    waypoints.append(m0['center'].copy())
 
     trajectory = PolyTrajectory(
         waypoints,
