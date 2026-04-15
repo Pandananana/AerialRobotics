@@ -807,7 +807,14 @@ if __name__ == '__main__':
                     running = drone.track_assignment_progress(sensor_data)
                     
                     # If the drone has completed the assignment, crash the drone
-                    if not running:    
+                    if not running:
+                        sys.stdout.flush()
+                        sys.stderr.flush()
+                        drone.simulationQuit(0)
+                        # Webots needs one more step after simulationQuit() to
+                        # flush buffered stdout and cleanly tear down the
+                        # controller; without it the final prints get dropped.
+                        drone.step(motorPower, sensor_data)
                         break
 
                 # Update the PID control time

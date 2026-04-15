@@ -21,6 +21,10 @@ EPFL MICRO-502 Aerial Robotics course. Program a Crazyflie quadrotor to autonomo
 - Set `exp_num = 4` and `control_style = 'path_planner'` in main.py for the assignment
 - Dependencies managed with UV (`uv sync`), Python 3.13+
 
+### Headless run (for automation / LLM use)
+
+Run `./run_headless.sh` from the repo root. It launches Webots with `--mode=fast --no-rendering --minimize --batch --stdout --stderr`, so the controller's `print(...)` output streams to the terminal and there is no GUI interaction. After lap 3, `main.py` calls `simulationQuit(0)` and Webots exits, returning control to the shell. Override the Webots binary path via the `WEBOTS` env var if needed.
+
 ## Architecture
 
 **`controllers/main/main.py`** — Main simulation loop: reads sensors, feeds data to a path planner thread, applies PID control. The path planner thread calls `assignment.get_command(sensor_data, camera_data, dt)` which returns a setpoint `[x, y, z, yaw]`. The PID controller (`exercises/ex1_pid_control.py`) converts setpoints to motor PWM via cascaded position→velocity→attitude→rate PIDs.
