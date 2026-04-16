@@ -19,7 +19,7 @@ print("You are using python at this location:", sys.executable)
 exp_num = 4                    # 0: Coordinate Transformation, 1: PID Tuning, 2: Kalman Filter, 3: Motion Planning, 4: Project
 control_style = 'path_planner'      # 'keyboard' or 'path_planner'
 rand_env = True                # Randomise the environment
-env_name = "skip_gate_race"                # Set to an environment name to replay it, None for random
+env_name = "race_skip_gate_0"                # Set to an environment name to replay it, None for random
 environments = {
     # Previously difficiult environments that have now been solved
     "wrong_gate_direction_and_detection_1": 1746958632,
@@ -35,6 +35,7 @@ environments = {
     "orthogonal_gate_1": 2134677595,
 
     # New environments that have not been solved yet
+    "race_skip_gate_0": 1792777611,
 }
 
 # Global variables for handling threads
