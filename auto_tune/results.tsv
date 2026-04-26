@@ -42,3 +42,4 @@ ts	kind	commit	loop	gains_changed	cost	rise_high	rise_low	overshoot_high	oversho
 2026-04-26T13:47:34	tune	dd572d2	vel_xy	P_vel_xy=1.0	1.3990	1.008	1.016	3.14	2.66	-6.49	6.67				vel_xy: P x2 (0.5 -> 1.0)
 2026-04-26T13:47:46	tune	7660d70	vel_xy	P_vel_xy=1.5	1.4367	1.008	1.016	10.12	11.05	-4.61	3.91				vel_xy: P x1.5 (1.0 -> 1.5)
 2026-04-26T13:48:01	tune	7660d70	vel_xy	D_vel_xy=0.025	1.3644	1.016	1.032	1.04	0.00	-6.48	6.72				vel_xy: D x1.67 (0.015 -> 0.025)
+2026-04-26T13:48:26	tune	44288f1	vel_xy	D_vel_xy=0.04	1.3500	1.016	1.040	0.00	0.00	-6.55	6.33				vel_xy: D x1.6 (0.025 -> 0.04)
