@@ -21,3 +21,4 @@ ts	kind	commit	loop	gains_changed	cost	rise_high	rise_low	overshoot_high	oversho
 2026-04-26T13:42:28	tune	abc0fd5	att_rp		0.7052	0.624	0.632	1.92	2.37	0.92	-0.45				att_rp baseline P=10.0 D=0.2
 2026-04-26T13:42:39	tune	abc0fd5	att_rp	P_att_rp=15.0	0.7179	0.608	0.608	4.36	4.48	-0.14	0.72				att_rp: P x1.5 (10.0 -> 15.0)
 2026-04-26T13:42:55	tune	abc0fd5	att_rp	D_att_rp=0.3	0.6908	0.656	0.656	1.36	1.20	0.32	-0.05				att_rp: P held, D x1.5 (0.2 -> 0.3)
+2026-04-26T13:43:15	tune	d3c0fa7	att_rp	P_att_rp=12.0	0.6897	0.624	0.632	1.87	2.12	0.57	-0.30				att_rp: P x1.2 (10 -> 12), D=0.3
