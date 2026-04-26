@@ -792,7 +792,6 @@ class MyAssignment:
         prev_state = self.state
         cmd, next_state = self.state.execute(drone, self.tracker, dt)
         if next_state is not None:
-            self._log_transition(prev_state, next_state)
             self.state = next_state
 
         # Clamping runs for all states except takeoff and racing
@@ -800,25 +799,6 @@ class MyAssignment:
             cmd = clamp_control_command(cmd, drone)
 
         return cmd
-
-    def _log_transition(self, prev_state, next_state):
-        duration = self.elapsed - self.last_transition_t
-        prev_name = type(prev_state).__name__
-        next_name = type(next_state).__name__
-        logger.info(
-            f"t={self.elapsed:.2f}s  {prev_name} -> {next_name} "
-            f"(spent {duration:.2f}s in {prev_name}, gate {self.tracker.current_gate_index})"
-        )
-        # Bracket the lap-1 measurement phase so its total time is easy to read off.
-        if isinstance(prev_state, TakeoffState):
-            self.measurement_phase_start_t = self.elapsed
-        if isinstance(next_state, RacingState) and self.measurement_phase_start_t is not None:
-            measure_total = self.elapsed - self.measurement_phase_start_t
-            logger.info(
-                f"Lap 1 (measurement) complete in {measure_total:.2f}s; "
-                f"total elapsed {self.elapsed:.2f}s"
-            )
-        self.last_transition_t = self.elapsed
 
     def take_photo(self, sensor_data, camera_data):
         image_filename = "data/gate1.png"
