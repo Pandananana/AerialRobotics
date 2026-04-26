@@ -9,3 +9,4 @@ ts	kind	commit	loop	gains_changed	cost	rise_high	rise_low	overshoot_high	oversho
 2026-04-26T13:39:22	tune	bf47d3a	rate_rp	D_rate_rp=0.09	0.5438	0.184	0.184	8.56	4.00	6.14	3.23				rate_rp: D 0.1 -> 0.09 (small step)
 2026-04-26T13:39:40	tune	bf47d3a	rate_y		0.5511	0.184	0.184	6.61	14.45	-1.19	-5.07				rate_y baseline P=0.02 D=0.001
 2026-04-26T13:39:57	tune	bf47d3a	rate_y	D_rate_y=0.0015	0.4915	0.320	0.280	6.73	6.37	-0.70	-1.72				rate_y: D x1.5 (0.001 -> 0.0015), P held
+2026-04-26T13:40:27	tune	4100ae9	rate_y	P_rate_y=0.025	0.2779	0.192	0.200	2.21	3.23	0.40	0.70				rate_y: P x1.25 (0.02 -> 0.025), D 0.0015
