@@ -1,1 +1,11 @@
 ts	kind	commit	loop	gains_changed	cost	rise_high	rise_low	overshoot_high	overshoot_low	ss_high	ss_low	lap_times	crashed	gates_ok	note
+2026-04-26T13:36:59	tune	bf47d3a	rate_rp		0.2485	0.208	0.240	2.05	0.00	-0.02	-0.14				baseline P=1.5 D=0.1
+2026-04-26T13:37:19	tune	bf47d3a	rate_rp	P_rate_rp=2.25	0.3614	0.168	0.152	3.30	13.62	1.28	0.01				rate_rp: P x1.5 (1.5 -> 2.25), D held
+2026-04-26T13:37:52	tune	bf47d3a	rate_rp	P_rate_rp=1.8	0.2756	0.192	0.200	0.00	4.01	-0.51	-1.07				rate_rp: P x1.2 (1.5 -> 1.8), D held
+2026-04-26T13:38:10	tune	bf47d3a	rate_rp	P_rate_rp=1.8,D_rate_rp=0.13	0.3149	0.240	0.232	2.02	0.00	1.17	1.18				rate_rp: P 1.5->1.8, D 0.1->0.13
+2026-04-26T13:38:23	tune	bf47d3a	rate_rp	D_rate_rp=0.07	0.3861	0.144	0.152	8.01	13.05	1.05	0.05				rate_rp: P held, D 0.1->0.07
+2026-04-26T13:38:47	tune	bf47d3a	rate_rp	P_rate_rp=1.6	0.2991	0.200	0.232	3.70	1.13	0.57	-0.82				rate_rp: P x1.07 (1.5 -> 1.6), D held
+2026-04-26T13:39:09	tune	bf47d3a	rate_rp	P_rate_rp=1.55	0.2792	0.216	0.232	0.00	1.00	-1.10	-0.71				rate_rp: P x1.033 (1.5 -> 1.55), smaller step
+2026-04-26T13:39:22	tune	bf47d3a	rate_rp	D_rate_rp=0.09	0.5438	0.184	0.184	8.56	4.00	6.14	3.23				rate_rp: D 0.1 -> 0.09 (small step)
+2026-04-26T13:39:40	tune	bf47d3a	rate_y		0.5511	0.184	0.184	6.61	14.45	-1.19	-5.07				rate_y baseline P=0.02 D=0.001
+2026-04-26T13:39:57	tune	bf47d3a	rate_y	D_rate_y=0.0015	0.4915	0.320	0.280	6.73	6.37	-0.70	-1.72				rate_y: D x1.5 (0.001 -> 0.0015), P held
