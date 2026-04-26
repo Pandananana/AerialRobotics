@@ -40,7 +40,7 @@ loop. Do NOT change `SEEDS` from this loop.
 4. `uv run python -m auto_race.race run --note "<one-line description>"`
 5. Compare printed `suite_cost` to `baseline` and apply the keep/revert rules
 6. Either:
-   - `uv run python -m auto_race.race commit -m "<note>"`  (one line, no co-author)
+   - `uv run python -m auto_race.race commit -m "<note>"` (one line, no co-author)
    - `uv run python -m auto_race.race revert`
 
 ## Keep / revert criteria
@@ -67,44 +67,10 @@ single seed.
   close to the apparent optimum.
 - If a change requires a coupled PID change to be safe (e.g. raising
   `VEL_LIM_XY` saturates `L_vel_xy`), do the trajectory limit alone first,
-  observe whether it saturates, then in a *separate* experiment raise the
+  observe whether it saturates, then in a _separate_ experiment raise the
   matching PID limit.
 - Always read the latest rows of `results.tsv` first; do not re-try a change
   that has already been logged as a revert.
-
-## High-EV things to try (rough priority — hints, not a plan)
-
-The agent is free to reorder based on evidence. Numbers are starting points.
-
-1. **Trajectory speed/accel limits** in `PolyTrajectory` (top of class):
-   `VEL_LIM_XY = 2.0`, `VEL_LIM_Z = 0.75`, `ACC_LIM_XY = 6`, `ACC_LIM_Z = 5`.
-   Direct caps on racing speed. Likely the biggest single lever.
-2. **PID saturation limits** in `quadrotor_controller.__init__`:
-   `L_acc_rp`, `L_vel_xy`, `L_vel_z`. Coupled with (1) — raising trajectory
-   speed without raising these wastes the headroom.
-3. **`MeasuringState` dwell** (`self.wait_timer >= 1.0`): biggest lap-1 cost.
-   Lower bound is "Kalman has converged" — try 0.5s, 0.3s.
-4. **Yaw scheduling** in `RacingState` / `PolyTrajectory.yaw_at`: yaw
-   currently follows velocity heading. Try lookahead — aim at the **next**
-   gate before reaching the current one (smoother turns through the gate).
-5. **Racing-line offsets**: `build_racing_trajectory` uses `m['center']` as
-   the waypoint per gate. Replace with offsets that cut the apex (shift the
-   waypoint inward toward the chord between adjacent gates).
-6. **Final velocity**: `PolyTrajectory.__init__` defaults `v_final=None` →
-   zero. Non-zero `v_final` for the final waypoint avoids decel-to-stop.
-7. **Pass-through tightening**: `MeasuringState` builds `pass_target =
-   center + direction_norm * 0.2`; `PassingThroughState` waits for
-   `dist < 0.05`. Tightening these can shave time per gate.
-8. **`RepositioningState`** distance / target Z (2m outward, 1.75m height):
-   heuristics; faster reacquisition = less lap-1 time.
-9. **`clamp_control_command`** caps (`max_speed=2`, `max_yaw_rate=0.4`):
-   active outside takeoff/racing — may bottleneck the search/approach phase.
-10. **`GateDetector`** margin (15px border rejection): may force unnecessary
-    re-yaw on partially-occluded gates seen at the edge of the FOV.
-11. **PID gains**: only after the trajectory side is exhausted. A controller
-    tuned for step response is not necessarily tuned for high-bandwidth
-    tracking. The `auto_tune/` cascade results may be reusable as a starting
-    point for individual gain experiments here.
 
 ## Anti-patterns
 

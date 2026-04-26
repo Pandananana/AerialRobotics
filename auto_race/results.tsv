@@ -1,0 +1,8 @@
+ts	commit	suite_cost	worst_cost	per_seed	note
+2026-04-26T14:58:25	d99db51	25.3120	26.0960	race_skip_gate_0=24.26(laps=49.4,12.2,12.0;crash=0;to=0;gates=1);orthogonal_gate_1=26.10(laps=46.8,12.6,13.5;crash=0;to=0;gates=1);skip_gate_3=25.58(laps=47.0,13.1,12.4;crash=0;to=0;gates=1)	baseline (no changes)
+2026-04-26T15:02:39	d99db51	inf	inf	race_skip_gate_0=25.44(laps=49.3,12.4,13.0;crash=0;to=0;gates=1);orthogonal_gate_1=26.81(laps=47.0,12.7,14.1;crash=0;to=0;gates=1);skip_gate_3=inf(laps=-;crash=0;to=0;gates=0)	v_final=1.5 m/s along last segment (no decel-to-stop)
+2026-04-26T15:17:29	d99db51	62.4427	65.3680	race_skip_gate_0=59.58(laps=52.0,27.9,31.7;crash=0;to=0;gates=1);orthogonal_gate_1=65.37(laps=49.4,29.0,36.4;crash=0;to=0;gates=1);skip_gate_3=62.38(laps=50.4,29.9,32.4;crash=0;to=0;gates=1)	add overshoot waypoint 0.5m past gate0 (no decel-at-finish)
+2026-04-26T15:19:21	d99db51	inf	inf	race_skip_gate_0=inf(laps=49.7,9.8,9.9;crash=0;to=0;gates=0)	VEL_LIM_XY 2.0 -> 2.5 (probe: does L_vel_xy=2.0 saturate?)
+2026-04-26T15:22:01	d99db51	25.4827	26.1760	race_skip_gate_0=24.64(laps=49.4,12.5,12.2;crash=0;to=0;gates=1);orthogonal_gate_1=26.18(laps=48.2,12.7,13.5;crash=0;to=0;gates=1);skip_gate_3=25.63(laps=46.0,13.2,12.4;crash=0;to=0;gates=1)	L_vel_xy 2.0 -> 2.5 (let chase term catch up faster)
+2026-04-26T15:24:02	d99db51	inf	inf	race_skip_gate_0=inf(laps=49.8,11.2,11.2;crash=0;to=0;gates=0)	VEL_LIM_XY 2.0 -> 2.2 (small bump, less shortcut risk)
+2026-04-26T15:26:07	d99db51	23.1200	23.8000	race_skip_gate_0=22.46(laps=49.7,11.3,11.1;crash=0;to=0;gates=1);orthogonal_gate_1=23.80(laps=47.5,11.5,12.3;crash=0;to=0;gates=1);skip_gate_3=23.10(laps=46.0,11.9,11.2;crash=0;to=0;gates=1)	raise XY peak speed 2.0 -> 2.2 (VEL_LIM_XY + L_vel_xy together)
