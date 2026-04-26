@@ -20,11 +20,15 @@ EPFL MICRO-502 Aerial Robotics course. Program a Crazyflie quadrotor to autonomo
 
 - Open `worlds/crazyflie_world_assignment.wbt` in Webots — it auto-runs `controllers/main/main.py`
 - Set `exp_num = 4` and `control_style = 'path_planner'` in main.py for the assignment
+- The PID-tuning exercise world is `worlds/crazyflie_world_excercise.wbt`, which auto-runs `controllers/main/tune.py` (a copy of main.py with `exp_num = 1`)
 - Dependencies managed with UV (`uv sync`), Python 3.13+
 
-### Headless run (for automation / LLM use)
+### Headless runs (for automation / LLM use)
 
-Run `./run_headless.sh` from the repo root. It launches Webots with `--mode=fast --no-rendering --minimize --batch --stdout --stderr`, so the controller's `print(...)` output streams to the terminal and there is no GUI interaction. After lap 3, `main.py` calls `simulationQuit(0)` and Webots exits, returning control to the shell. Override the Webots binary path via the `WEBOTS` env var if needed.
+Both scripts launch Webots with `--mode=fast --no-rendering --minimize --batch --stdout --stderr`, so controller `print(...)` output streams to the terminal and there is no GUI interaction. Override the Webots binary path via the `WEBOTS` env var if needed.
+
+- `./run_race.sh` — runs the racing assignment world. After lap 3, `main.py` calls `simulationQuit(0)` and Webots exits.
+- `./run_tune.sh` — runs the PID-tuning exercise world. `ex1_pid_control.py` prints step-response metrics (steady-state error, overshoot, rise time) to stdout. Pick which loop to tune by editing `self.tuning_level` in `controllers/main/exercises/ex1_pid_control.py` (`vel_z`, `pos_z`, `vel_xy`, `pos_xy`, `att_rp`, `att_y`, `rate_rp`, `rate_y`, or `off`).
 
 ## Architecture
 

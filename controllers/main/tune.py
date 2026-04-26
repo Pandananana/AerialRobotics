@@ -1,4 +1,5 @@
 # Main simulation file called by the Webots
+import os
 import random
 import sys
 import threading
@@ -738,10 +739,19 @@ if __name__ == '__main__':
                 if exp_num == 4:
                     # Track the progress of the drone through the assignment world
                     running = drone.track_assignment_progress(sensor_data)
-                    
+
                     # If the drone has completed the assignment, crash the drone
-                    if not running:    
+                    if not running:
                         break
+
+                # Quit Webots once the PID tuning step-response plot has run, so a
+                # headless caller (run_tune.sh) terminates instead of hovering.
+                if exp_num == 1 and os.environ.get("PID_TUNE_HEADLESS") == "1" and getattr(drone.PID_CF, "tuning_done", False):
+                    sys.stdout.flush()
+                    sys.stderr.flush()
+                    drone.simulationQuit(0)
+                    drone.step(motorPower, sensor_data)
+                    break
 
                 # Update the PID control time
                 drone.dt_ctrl = drone.getTime() - drone.PID_update_last_time # Time interval for PID control - Is refactored above for KF - why done twice?

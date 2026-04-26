@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run the assignment world headless: no rendering, fast mode, controller
+# Run the racing assignment world headless: no rendering, fast mode, controller
 # stdout/stderr piped to this terminal. Webots exits on its own once the
 # controller calls simulationQuit(0) after lap 3.
 set -euo pipefail
