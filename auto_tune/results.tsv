@@ -70,3 +70,5 @@ ts	kind	commit	loop	gains_changed	cost	rise_high	rise_low	overshoot_high	oversho
 2026-04-26T13:53:04	tune	9cab7c0	pos_xy		4.0955	4.104	4.024	0.00	0.00	-0.94	0.32				pos_xy baseline P=1.5 D=0
 2026-04-26T13:53:15	tune	9cab7c0	pos_xy	P_pos_xy=3.0	inf	nan	nan	0.00	0.00	-70.77	126.52				pos_xy: P x2 (1.5 -> 3.0)
 2026-04-26T13:53:30	tune	9cab7c0	pos_xy	P_pos_xy=2.0	3.7620	3.776	3.728	0.00	0.00	-0.09	-0.31				pos_xy: P x1.33 (1.5 -> 2.0)
+2026-04-26T13:53:42	tune	d6f2620	pos_xy	P_pos_xy=2.5	inf	nan	nan	0.00	0.00	-77.76	122.24				pos_xy: P 2.0 -> 2.5
+2026-04-26T13:53:54	tune	d6f2620	pos_xy	P_pos_xy=2.2	3.6493	3.656	3.624	0.00	0.00	-0.00	-0.37				pos_xy: P 2.0 -> 2.2

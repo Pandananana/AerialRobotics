@@ -17,7 +17,7 @@ class quadrotor_controller():
     
         gains = {
                     "P_pos_z": 5.0,     "I_pos_z": 0.0,     "D_pos_z": 0.8,
-                    "P_pos_xy": 2.0,    "I_pos_xy": 0.0,    "D_pos_xy": 0.0,
+                    "P_pos_xy": 2.2,    "I_pos_xy": 0.0,    "D_pos_xy": 0.0,
                     "P_vel_z": 13.0,     "I_vel_z": 0.0,     "D_vel_z": 2.0,
                     "P_vel_xy": 1.0,    "I_vel_xy": 0.04,    "D_vel_xy": 0.045,
                     "P_att_rp": 12.0,   "I_att_rp": 0.0,    "D_att_rp": 0.3,
