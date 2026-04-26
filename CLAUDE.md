@@ -8,7 +8,7 @@ EPFL MICRO-502 Aerial Robotics course. Program a Crazyflie quadrotor to autonomo
 
 ## Assignment Requirements
 
-- Only modifications in `controllers/main/assignment/my_assignment.py` and `controllers/main/main.py` are submitted and evaluated on. Other files will be ignored.
+- Only modifications in `controllers/main/assignment/my_assignment.py` and `controllers/main/exercises/ex1_pid_control.py` are submitted and evaluated on. Other files will be ignored.
 - 5 square pink gates arranged in a circle-like pattern, completed counter-clockwise
 - Gate positions/sizes are randomized each run. Circle centre at (4, 4), inner radius 1.5, outer radius 3.5, height 0.7–2.0m, opening size 0.3–0.5m, rotation ±π/6
 - Lap 1: gate positions unknown — must detect using computer vision (OpenCV)
