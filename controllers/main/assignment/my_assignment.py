@@ -307,11 +307,8 @@ class PolyTrajectory:
     current state), and final velocity/acceleration default to zero.
     """
 
-    # PID clamps at L_vel_xy=2.0, L_vel_z=0.75. L_acc_rp=pi/6 tilt gives
-    # ~g*tan(pi/6) ≈ 5.66 m/s² horizontal acceleration. With velocity FF active in
-    # RacingState, tracking lag is small, so we can push closer to these hard limits.
     VEL_LIM_XY = 2.0
-    VEL_LIM_Z = 1
+    VEL_LIM_Z = 0.75
     ACC_LIM_XY = 6
     ACC_LIM_Z = 5.0
     DISC_STEPS = 20
