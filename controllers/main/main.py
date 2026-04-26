@@ -16,7 +16,7 @@ from scipy.spatial.transform import Rotation as R
 
 print("You are using python at this location:", sys.executable)
 
-CLI_MODE = False
+CLI_MODE = True
 exp_num = 4                    # 0: Coordinate Transformation, 1: PID Tuning, 2: Kalman Filter, 3: Motion Planning, 4: Project
 control_style = 'path_planner'      # 'keyboard' or 'path_planner'
 rand_env = True                # Randomise the environment
@@ -326,17 +326,15 @@ class CrazyflieInDroneDome(Supervisor):
         rotation_field = goal_node.getField('rotation')
         rotation_field.setSFRotation([0, 0, 1, goal_orientation])
   
-    # Detect if the drone has crashed (flipped over after takeoff)
+    # Detect if the drone has crashed (flipped over, or failed to take off)
     def check_crash(self, sensor_data):
         # Mark that the drone has taken off once it gets above a threshold
         if not self.has_taken_off and sensor_data['z_global'] > 0.5:
             self.has_taken_off = True
 
-        if not self.has_taken_off:
-            return False
-
-        # Severe tilt indicates a crash. Decay the timer when upright so brief
-        # transients during aggressive maneuvers don't trip the detector.
+        # Severe tilt indicates a crash, regardless of takeoff state. Decay the
+        # timer when upright so brief transients during aggressive maneuvers
+        # don't trip the detector.
         tilt = max(abs(sensor_data['roll']), abs(sensor_data['pitch']))
         dt = self.timestep / 1000.0
         if tilt > np.pi / 3:
@@ -347,13 +345,20 @@ class CrazyflieInDroneDome(Supervisor):
         if self.crash_timer > 0.3:
             self.crashed = True
             return True
+
+        # Failed takeoff: still on the pad well past when the drone should be airborne
+        if not self.has_taken_off and self.getTime() > 5.0:
+            self.crashed = True
+            return True
+
         return False
 
     # Track the progress in the assignment
     def track_assignment_progress(self, sensor_data):
         # Detect crash and terminate the run if the drone has flipped over
         if self.check_crash(sensor_data):
-            print(f"Crash detected (tilt sustained >60deg). Ending simulation. Lap times: {self.lap_times}")
+            reason = "failed takeoff" if not self.has_taken_off else "tilt sustained >60deg"
+            print(f"Crash detected ({reason}). Ending simulation. Lap times: {self.lap_times}")
             return False
 
          # Check which segment the drone is in
