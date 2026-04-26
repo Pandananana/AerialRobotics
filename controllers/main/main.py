@@ -16,6 +16,7 @@ from scipy.spatial.transform import Rotation as R
 
 print("You are using python at this location:", sys.executable)
 
+CLI_MODE = False
 exp_num = 4                    # 0: Coordinate Transformation, 1: PID Tuning, 2: Kalman Filter, 3: Motion Planning, 4: Project
 control_style = 'path_planner'      # 'keyboard' or 'path_planner'
 rand_env = True                # Randomise the environment
@@ -809,13 +810,14 @@ if __name__ == '__main__':
                     
                     # If the drone has completed the assignment, crash the drone
                     if not running:
-                        sys.stdout.flush()
-                        sys.stderr.flush()
-                        drone.simulationQuit(0)
-                        # Webots needs one more step after simulationQuit() to
-                        # flush buffered stdout and cleanly tear down the
-                        # controller; without it the final prints get dropped.
-                        drone.step(motorPower, sensor_data)
+                        if CLI_MODE:
+                            sys.stdout.flush()
+                            sys.stderr.flush()
+                            drone.simulationQuit(0)
+                            # Webots needs one more step after simulationQuit() to
+                            # flush buffered stdout and cleanly tear down the
+                            # controller; without it the final prints get dropped.
+                            drone.step(motorPower, sensor_data)
                         break
 
                 # Update the PID control time
