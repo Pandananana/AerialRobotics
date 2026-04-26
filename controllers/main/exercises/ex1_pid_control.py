@@ -21,7 +21,7 @@ class quadrotor_controller():
                     "P_vel_z": 7.0,     "I_vel_z": 0.0,     "D_vel_z": 2.0,
                     "P_vel_xy": 0.5,    "I_vel_xy": 0.0,    "D_vel_xy": 0.015,
                     "P_att_rp": 12.0,   "I_att_rp": 0.0,    "D_att_rp": 0.3,
-                    "P_att_y": 6.0,     "I_att_y": 0.0,     "D_att_y": 0.3,
+                    "P_att_y": 9.0,     "I_att_y": 0.0,     "D_att_y": 0.3,
                     "P_rate_rp": 1.5,   "I_rate_rp":0.0,    "D_rate_rp": 0.1,
                     "P_rate_y": 0.025,   "I_rate_y": 0.0,    "D_rate_y": 0.0015
                     }

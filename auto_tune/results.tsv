@@ -32,3 +32,4 @@ ts	kind	commit	loop	gains_changed	cost	rise_high	rise_low	overshoot_high	oversho
 2026-04-26T13:44:49	tune	2e8209b	att_y	D_att_y=0.6	1.6517	0.432	0.448	57.00	56.42	2.11	-0.99				att_y: D x2.0 (0.3 -> 0.6)
 2026-04-26T13:45:19	tune	2e8209b	att_y	P_att_y=2.0	1.8470	0.488	0.488	56.96	56.79	4.41	-4.45				att_y: P x0.5 (4.0 -> 2.0)
 2026-04-26T13:45:45	tune	2e8209b	att_y	P_att_y=6.0	1.6071	0.464	0.448	56.45	56.88	0.07	-0.64				att_y: P x1.5 (4 -> 6)
+2026-04-26T13:46:02	tune	fe7cf20	att_y	P_att_y=9.0	1.5818	0.456	0.456	56.04	56.07	0.09	-0.10				att_y: P x1.5 (6 -> 9)
