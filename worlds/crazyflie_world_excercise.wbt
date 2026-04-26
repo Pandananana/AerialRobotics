@@ -43,7 +43,7 @@ Crazyflie {
   translation 0.9660470000000083 0.8372480000000008 0.12
   rotation 1.4432514312069223e-13 -7.094951043479413e-14 1 0.004202810932212425
   name "crazyflie"
-  controller "main"
+  controller "tune"
   supervisor TRUE
   extensionSlot [
     DEF CF_CAMERA Camera {
