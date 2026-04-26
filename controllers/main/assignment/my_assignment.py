@@ -1,9 +1,17 @@
 import csv
 import dataclasses
+import logging
 from abc import ABC, abstractmethod
 
 import cv2
 import numpy as np
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s.%(msecs)03d [%(levelname)s] %(message)s',
+    datefmt='%H:%M:%S',
+)
+logger = logging.getLogger(__name__)
 
 # The available ground truth state measurements can be accessed by calling sensor_data[item]. All values of "item" are provided as defined in main.py within the function read_sensors.
 # The "item" values that you may later retrieve for the hardware project are:
@@ -469,7 +477,7 @@ class SearchingState(State):
         if tracker.has_estimate:
             normal = tracker.oriented_normal()
             if normal is None:
-                print("No gate detected, moving outward")
+                logger.debug("Gate normal degenerate, moving outward and re-yawing")
                 tracker.corners = None
                 tracker.center = None
                 return self._move_outward_and_yaw(drone), None
@@ -535,7 +543,7 @@ class ApproachingState(State):
 
         if dist < 0.05 and yaw_error < 0.05:
             tracker.reset_filter()
-            print("Resetting gate filter")
+            logger.debug("Approach point reached; resetting gate filter for measurement")
             return cmd, MeasuringState(self.target_pos.copy(), target_yaw)
 
         return cmd, None
@@ -582,9 +590,9 @@ class PassingThroughState(State):
         if dist < 0.05:
             tracker.advance_gate()
             if tracker.all_gates_measured:
-                print("[GATE] All 5 gates measured! Computing racing trajectory.")
+                logger.info("All 5 gates measured. Computing racing trajectory.")
                 for i, m in enumerate(tracker.measurements):
-                    print(f"  Gate {i}: center={m['center']}, normal={m['normal']}")
+                    logger.debug(f"Gate {i}: center={m['center']}, normal={m['normal']}")
                 trajectory = build_racing_trajectory(drone, tracker.measurements)
                 return cmd, RacingState(trajectory)
             else:
@@ -637,9 +645,10 @@ def build_racing_trajectory(drone, measurements, num_laps=2):
         v_init=drone.vel.copy(),
         a_init=drone.acc.copy(),
     )
-    print(
-        f"[RACING] Trajectory: {trajectory.total_length:.1f}m over {trajectory.total_time:.1f}s "
-        f"through {len(waypoints)} waypoints"
+    logger.info(
+        f"Racing trajectory: {trajectory.total_length:.2f}m over "
+        f"{trajectory.total_time:.2f}s through {len(waypoints)} waypoints "
+        f"(avg speed {trajectory.total_length / trajectory.total_time:.2f} m/s)"
     )
     return trajectory
 
@@ -662,11 +671,11 @@ class RacingState(State):
         self.t_elapsed = 0.0
         self.interval_elapsed = 0.0
         self.interval_max_speed = 0.0
+        self.interval_max_pos_error = 0.0
+        self.race_max_pos_error = 0.0
+        self.race_pos_error_sum = 0.0
+        self.race_pos_error_samples = 0
         self.interval_index = 0
-        print(
-            f"[RACING] Following trajectory "
-            f"({trajectory.total_length:.1f}m, {trajectory.total_time:.1f}s)"
-        )
 
     def _apply_ff(self, pos, vel):
         return np.array([
@@ -676,16 +685,35 @@ class RacingState(State):
         ])
 
     def execute(self, drone, tracker, dt):
+        # Tracking error: compare drone position to where the trajectory says it should be.
+        # High error means the PID is lagging the reference — slow the trajectory or retune.
+        ref_t = min(self.t_elapsed, self.trajectory.total_time)
+        ref_pos = self.trajectory.position_at(ref_t)
+        pos_error = float(np.linalg.norm(ref_pos - drone.pos))
         speed_mag = float(np.linalg.norm(drone.vel))
+
         self.interval_max_speed = max(self.interval_max_speed, speed_mag)
+        self.interval_max_pos_error = max(self.interval_max_pos_error, pos_error)
+        self.race_max_pos_error = max(self.race_max_pos_error, pos_error)
+        self.race_pos_error_sum += pos_error
+        self.race_pos_error_samples += 1
         self.interval_elapsed += dt
-        self._flush_completed_speed_intervals(speed_mag)
+        self._flush_completed_speed_intervals(speed_mag, pos_error)
 
         self.t_elapsed += dt
 
         if self.t_elapsed >= self.trajectory.total_time:
-            self._print_final_partial_speed_interval()
-            print("[RACING] All laps complete!")
+            self._log_final_partial_speed_interval()
+            mean_err = (
+                self.race_pos_error_sum / self.race_pos_error_samples
+                if self.race_pos_error_samples else 0.0
+            )
+            logger.info(
+                f"Racing complete: predicted={self.trajectory.total_time:.2f}s, "
+                f"actual={self.t_elapsed:.2f}s "
+                f"(delta={self.t_elapsed - self.trajectory.total_time:+.3f}s); "
+                f"pos_error mean={mean_err:.3f}m, max={self.race_max_pos_error:.3f}m"
+            )
             target = self.trajectory.position_at(self.trajectory.total_time)
             target_yaw = self.trajectory.yaw_at(self.trajectory.total_time)
             return [target[0], target[1], target[2], target_yaw], DoneState(target, target_yaw)
@@ -696,27 +724,35 @@ class RacingState(State):
         target_yaw = self.trajectory.yaw_at(self.t_elapsed)
         return [target_ff[0], target_ff[1], target_ff[2], target_yaw], None
 
-    def _flush_completed_speed_intervals(self, current_speed):
+    def _flush_completed_speed_intervals(self, current_speed, current_error):
         while self.interval_elapsed >= self.SPEED_INTERVAL_S:
             self.interval_index += 1
-            print(
-                f"[RACING] Interval {self.interval_index} "
-                f"({self.SPEED_INTERVAL_S:.1f}s) max speed: {self.interval_max_speed:.2f} m/s"
+            logger.info(
+                f"Race interval {self.interval_index} ({self.SPEED_INTERVAL_S:.1f}s): "
+                f"max_speed={self.interval_max_speed:.2f}m/s, "
+                f"max_pos_error={self.interval_max_pos_error:.3f}m"
             )
             self.interval_elapsed -= self.SPEED_INTERVAL_S
-            self.interval_max_speed = current_speed if self.interval_elapsed > 0.0 else 0.0
+            if self.interval_elapsed > 0.0:
+                self.interval_max_speed = current_speed
+                self.interval_max_pos_error = current_error
+            else:
+                self.interval_max_speed = 0.0
+                self.interval_max_pos_error = 0.0
 
-    def _print_final_partial_speed_interval(self):
+    def _log_final_partial_speed_interval(self):
         if self.interval_elapsed <= 1e-6:
             return
 
         self.interval_index += 1
-        print(
-            f"[RACING] Interval {self.interval_index} "
-            f"({self.interval_elapsed:.1f}s) max speed: {self.interval_max_speed:.2f} m/s"
+        logger.info(
+            f"Race interval {self.interval_index} ({self.interval_elapsed:.2f}s, partial): "
+            f"max_speed={self.interval_max_speed:.2f}m/s, "
+            f"max_pos_error={self.interval_max_pos_error:.3f}m"
         )
         self.interval_elapsed = 0.0
         self.interval_max_speed = 0.0
+        self.interval_max_pos_error = 0.0
 
 
 class DoneState(State):
@@ -732,6 +768,9 @@ class MyAssignment:
         self.detector = GateDetector(fov=1.5)
         self.tracker = GateTracker()
         self.state = TakeoffState()
+        self.elapsed = 0.0
+        self.last_transition_t = 0.0
+        self.measurement_phase_start_t = None
 
     @property
     def predicted_corners_world(self):
@@ -739,6 +778,7 @@ class MyAssignment:
         return self.tracker.corners
 
     def compute_command(self, sensor_data, camera_data, dt):
+        self.elapsed += dt
         drone = DroneState.from_sensor_data(sensor_data)
 
         # Detection runs only during states that need it (not during takeoff, passing through, or done)
@@ -752,6 +792,7 @@ class MyAssignment:
         prev_state = self.state
         cmd, next_state = self.state.execute(drone, self.tracker, dt)
         if next_state is not None:
+            self._log_transition(prev_state, next_state)
             self.state = next_state
 
         # Clamping runs for all states except takeoff and racing
@@ -759,6 +800,25 @@ class MyAssignment:
             cmd = clamp_control_command(cmd, drone)
 
         return cmd
+
+    def _log_transition(self, prev_state, next_state):
+        duration = self.elapsed - self.last_transition_t
+        prev_name = type(prev_state).__name__
+        next_name = type(next_state).__name__
+        logger.info(
+            f"t={self.elapsed:.2f}s  {prev_name} -> {next_name} "
+            f"(spent {duration:.2f}s in {prev_name}, gate {self.tracker.current_gate_index})"
+        )
+        # Bracket the lap-1 measurement phase so its total time is easy to read off.
+        if isinstance(prev_state, TakeoffState):
+            self.measurement_phase_start_t = self.elapsed
+        if isinstance(next_state, RacingState) and self.measurement_phase_start_t is not None:
+            measure_total = self.elapsed - self.measurement_phase_start_t
+            logger.info(
+                f"Lap 1 (measurement) complete in {measure_total:.2f}s; "
+                f"total elapsed {self.elapsed:.2f}s"
+            )
+        self.last_transition_t = self.elapsed
 
     def take_photo(self, sensor_data, camera_data):
         image_filename = "data/gate1.png"
