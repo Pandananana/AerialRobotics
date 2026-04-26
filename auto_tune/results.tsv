@@ -82,3 +82,5 @@ ts	kind	commit	loop	gains_changed	cost	rise_high	rise_low	overshoot_high	oversho
 2026-04-26T13:56:26	tune	c8606ed	pos_z	D_pos_z=0.5	1.7084	1.584	1.632	2.30	4.69	-0.75	-0.47				pos_z: D x0.625 (0.8 -> 0.5)
 2026-04-26T13:56:37	tune	c8606ed	pos_z	P_pos_z=6.0	1.6761	1.576	1.664	1.38	1.10	-0.65	-0.60				pos_z: P 5 -> 6
 2026-04-26T13:56:49	tune	350ca2f	pos_z	P_pos_z=6.5	1.6702	1.576	1.624	1.35	3.42	-0.36	-0.54				pos_z: P 6 -> 6.5
+2026-04-26T13:57:00	tune	6aa11d4	pos_z	P_pos_z=7.0	1.6991	1.568	1.608	3.94	4.87	-0.47	-0.45				pos_z: P 6.5 -> 7
+2026-04-26T13:57:11	tune	6aa11d4	pos_z	D_pos_z=1.0	1.6522	1.592	1.648	0.00	0.00	-0.34	-0.95				pos_z: D 0.8 -> 1.0
