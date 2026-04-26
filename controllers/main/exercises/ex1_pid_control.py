@@ -30,7 +30,7 @@ class quadrotor_controller():
         self.limits = {
                     "L_rate_rp": 2.0,
                     "L_rate_y": 3.0,
-                    "L_acc_rp": np.pi/6,
+                    "L_acc_rp": np.pi/4,
                     "L_vel_z": 0.75,
                     "L_vel_xy": 3.0
                     }
@@ -162,8 +162,8 @@ class quadrotor_controller():
             yaw = self.tuning(-2,2,2,dt,yaw, sensor_data["yaw"], "yaw [rad]")
 
         # Attitude control loop
-        self.pid_att_x.set_setpoint(np.clip(-acceleration[1],-np.pi/6,np.pi/6))
-        self.pid_att_y.set_setpoint(np.clip(acceleration[0],-np.pi/6,np.pi/6))
+        self.pid_att_x.set_setpoint(np.clip(-acceleration[1],-np.pi/4,np.pi/4))
+        self.pid_att_y.set_setpoint(np.clip(acceleration[0],-np.pi/4,np.pi/4))
         yaw = self.convert_yaw_setpoint(yaw, sensor_data["yaw"])
         self.pid_att_z.set_setpoint(yaw)
         
