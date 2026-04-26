@@ -32,7 +32,7 @@ class quadrotor_controller():
                     "L_rate_y": 3.0,
                     "L_acc_rp": np.pi/6,
                     "L_vel_z": 0.75,
-                    "L_vel_xy": 2.4
+                    "L_vel_xy": 2.6
                     }
                 
         self.global_time = 0
