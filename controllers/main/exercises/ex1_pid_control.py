@@ -12,11 +12,11 @@ class quadrotor_controller():
         if exp_num == 4:
             self.tuning_level = "off" # Always off when in racing mode
         else:
-            self.tuning_level = "pos_xy" # Modify this when tuning, to tune different things. Choose between ["vel_z", "pos_z", "vel_xy", "pos_xy"]
+            self.tuning_level = "pos_z" # Modify this when tuning, to tune different things. Choose between ["vel_z", "pos_z", "vel_xy", "pos_xy"]
         
     
         gains = {
-                    "P_pos_z": 5.0,     "I_pos_z": 0.0,     "D_pos_z": 0.8,
+                    "P_pos_z": 6.0,     "I_pos_z": 0.0,     "D_pos_z": 0.8,
                     "P_pos_xy": 2.2,    "I_pos_xy": 0.0,    "D_pos_xy": 0.0,
                     "P_vel_z": 13.0,     "I_vel_z": 0.0,     "D_vel_z": 2.0,
                     "P_vel_xy": 1.0,    "I_vel_xy": 0.04,    "D_vel_xy": 0.045,

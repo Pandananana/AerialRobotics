@@ -72,3 +72,12 @@ ts	kind	commit	loop	gains_changed	cost	rise_high	rise_low	overshoot_high	oversho
 2026-04-26T13:53:30	tune	9cab7c0	pos_xy	P_pos_xy=2.0	3.7620	3.776	3.728	0.00	0.00	-0.09	-0.31				pos_xy: P x1.33 (1.5 -> 2.0)
 2026-04-26T13:53:42	tune	d6f2620	pos_xy	P_pos_xy=2.5	inf	nan	nan	0.00	0.00	-77.76	122.24				pos_xy: P 2.0 -> 2.5
 2026-04-26T13:53:54	tune	d6f2620	pos_xy	P_pos_xy=2.2	3.6493	3.656	3.624	0.00	0.00	-0.00	-0.37				pos_xy: P 2.0 -> 2.2
+2026-04-26T13:54:06	tune	c8606ed	pos_xy	P_pos_xy=2.4	inf	nan	nan	0.00	0.00	-75.54	124.48				pos_xy: P 2.2 -> 2.4
+2026-04-26T13:54:30	tune	c8606ed	pos_xy	P_pos_xy=2.3	inf	nan	nan	0.00	89308.09	-66103.32	-89308.09				pos_xy: P 2.2 -> 2.3
+2026-04-26T13:54:44	tune	c8606ed	pos_xy	D_pos_xy=0.05	3.7153	3.736	3.680	0.00	0.00	-0.04	-0.25				pos_xy: D 0 -> 0.05 (P near edge)
+2026-04-26T13:55:05	tune	c8606ed	pos_xy	P_pos_xy=2.4,D_pos_xy=0.05	inf	nan	nan	0.00	0.00	-76.53	123.45				pos_xy: P 2.4 D 0.05 (D suppresses divergence?)
+2026-04-26T13:55:31	tune	c8606ed	pos_z		1.6859	1.560	1.696	0.00	2.46	-1.04	-0.29				pos_z baseline P=5 D=0.8
+2026-04-26T13:55:54	tune	c8606ed	pos_z	P_pos_z=7.5	1.7444	1.568	1.624	6.92	3.74	1.30	-0.37				pos_z: P x1.5 (5 -> 7.5)
+2026-04-26T13:56:13	tune	c8606ed	pos_z	D_pos_z=1.2	1.9539	1.712	2.048	0.00	1.59	-1.17	-1.15				pos_z: D x1.5 (0.8 -> 1.2)
+2026-04-26T13:56:26	tune	c8606ed	pos_z	D_pos_z=0.5	1.7084	1.584	1.632	2.30	4.69	-0.75	-0.47				pos_z: D x0.625 (0.8 -> 0.5)
+2026-04-26T13:56:37	tune	c8606ed	pos_z	P_pos_z=6.0	1.6761	1.576	1.664	1.38	1.10	-0.65	-0.60				pos_z: P 5 -> 6
