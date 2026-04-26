@@ -307,7 +307,7 @@ class PolyTrajectory:
     current state), and final velocity/acceleration default to zero.
     """
 
-    VEL_LIM_XY = 2.6
+    VEL_LIM_XY = 2.8
     VEL_LIM_Z = 0.75
     ACC_LIM_XY = 6
     ACC_LIM_Z = 5.0
