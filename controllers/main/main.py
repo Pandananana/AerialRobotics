@@ -16,7 +16,7 @@ from scipy.spatial.transform import Rotation as R
 
 print("You are using python at this location:", sys.executable)
 
-CLI_MODE = True
+CLI_MODE = False
 exp_num = 4                    # 0: Coordinate Transformation, 1: PID Tuning, 2: Kalman Filter, 3: Motion Planning, 4: Project
 control_style = 'path_planner'      # 'keyboard' or 'path_planner'
 rand_env = True                # Randomise the environment
