@@ -29,6 +29,7 @@ Both scripts launch Webots with `--mode=fast --no-rendering --minimize --batch -
 
 - `./run_race.sh` — runs the racing assignment world. After lap 3, `main.py` calls `simulationQuit(0)` and Webots exits.
 - `./run_tune.sh` — runs the PID-tuning exercise world. `ex1_pid_control.py` prints step-response metrics (steady-state error, overshoot, rise time) to stdout. Pick which loop to tune by editing `self.tuning_level` in `controllers/main/exercises/ex1_pid_control.py` (`vel_z`, `pos_z`, `vel_xy`, `pos_xy`, `att_rp`, `att_y`, `rate_rp`, `rate_y`, or `off`).
+- `uv run python -m auto_race.race run-all -j 4` — sweep every environment in `main.py`'s `environments` dict in parallel and print a per-env table of lap times and gate progress. Use `-j 4` for concurrency.
 
 ## Architecture
 

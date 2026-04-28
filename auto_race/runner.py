@@ -13,10 +13,10 @@ from __future__ import annotations
 
 import datetime
 import math
+import os
 import re
 import subprocess
 import sys
-from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -35,40 +35,6 @@ SEEDS = (
     "orthogonal_gate_1",
     "skip_gate_3",
 )
-
-
-# ---------------- main.py patching -----------------------------------------
-
-@contextmanager
-def patched_main(env_name: str):
-    """Set ``CLI_MODE = True`` and ``env_name = "<env_name>"`` in main.py for
-    the duration of the with-block. Restores the original file contents on
-    exit, regardless of how the block exits.
-    """
-    original = MAIN_FILE.read_text()
-    text = re.sub(
-        r'^CLI_MODE\s*=\s*\w+',
-        'CLI_MODE = True',
-        original,
-        count=1,
-        flags=re.MULTILINE,
-    )
-    if 'CLI_MODE = True' not in text:
-        raise ValueError("failed to patch CLI_MODE in main.py")
-    text = re.sub(
-        r'^env_name\s*=\s*"[^"]*"',
-        f'env_name = "{env_name}"',
-        text,
-        count=1,
-        flags=re.MULTILINE,
-    )
-    if f'env_name = "{env_name}"' not in text:
-        raise ValueError(f"failed to patch env_name to {env_name} in main.py")
-    MAIN_FILE.write_text(text)
-    try:
-        yield
-    finally:
-        MAIN_FILE.write_text(original)
 
 
 # ---------------- Result types ---------------------------------------------
@@ -153,23 +119,25 @@ def _parse_race_stdout(stdout: str) -> RaceResult:
 # ---------------- Subprocess execution -------------------------------------
 
 def run_race_for_seed(seed: str, timeout: float = 300.0) -> RaceResult:
-    """Patch main.py for ``seed``, run one race, parse stdout. Restores
-    main.py on every exit path."""
-    with patched_main(seed):
-        try:
-            proc = subprocess.run(
-                [str(RACE_SH)],
-                cwd=str(REPO),
-                capture_output=True, text=True,
-                timeout=timeout,
-            )
-            r = _parse_race_stdout(proc.stdout + "\n" + proc.stderr)
-        except subprocess.TimeoutExpired as e:
-            out = e.stdout or ""
-            if isinstance(out, bytes):
-                out = out.decode(errors="replace")
-            r = _parse_race_stdout(out)
-            r.timed_out = True
+    """Run one headless race for ``seed``. Passes the seed and CLI-mode flag
+    via env vars (``AERIAL_ENV_NAME``, ``AERIAL_CLI_MODE``) so concurrent
+    runs do not race on shared file state."""
+    env = {**os.environ, "AERIAL_ENV_NAME": seed, "AERIAL_CLI_MODE": "1"}
+    try:
+        proc = subprocess.run(
+            [str(RACE_SH)],
+            cwd=str(REPO),
+            capture_output=True, text=True,
+            timeout=timeout,
+            env=env,
+        )
+        r = _parse_race_stdout(proc.stdout + "\n" + proc.stderr)
+    except subprocess.TimeoutExpired as e:
+        out = e.stdout or ""
+        if isinstance(out, bytes):
+            out = out.decode(errors="replace")
+        r = _parse_race_stdout(out)
+        r.timed_out = True
     r.seed = seed
     return r
 
@@ -284,6 +252,25 @@ def best_known_per_seed() -> dict[str, float]:
             if seed in out and cost < out[seed]:
                 out[seed] = cost
     return out
+
+
+def all_env_names() -> list[str]:
+    """Every key from main.py's ``environments`` dict, in source order."""
+    import ast
+    tree = ast.parse(MAIN_FILE.read_text())
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and node.targets[0].id == "environments"
+            and isinstance(node.value, ast.Dict)
+        ):
+            return [
+                k.value for k in node.value.keys
+                if isinstance(k, ast.Constant) and isinstance(k.value, str)
+            ]
+    raise ValueError("could not find `environments` dict in main.py")
 
 
 if __name__ == "__main__":
