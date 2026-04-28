@@ -21,7 +21,7 @@ CLI_MODE = os.environ.get("AERIAL_CLI_MODE") == "1"
 exp_num = 4                    # 0: Coordinate Transformation, 1: PID Tuning, 2: Kalman Filter, 3: Motion Planning, 4: Project
 control_style = 'path_planner'      # 'keyboard' or 'path_planner'
 rand_env = True                # Randomise the environment
-env_name = os.environ.get("AERIAL_ENV_NAME", "race_skip_gate_3")  # Set to an environment name to replay it, None for random
+env_name = os.environ.get("AERIAL_ENV_NAME", "measurement_skip_gate_1")  # Set to an environment name to replay it, None for random
 environments = {
     # Previously difficiult environments that have now been solved
     "wrong_gate_direction_and_detection_1": 1746958632,
@@ -42,7 +42,7 @@ environments = {
     "race_slow_1": 1424690296,
     "race_taking_outer_line": 2000333,
     "measurement_skip_gate_0": 1832539596,
-    "race_slow_2": 2028390449,            # lap2=13.4s, lap3=14.1s
+    "measurement_skip_gate_1": 2028390449,            # lap2=13.4s, lap3=14.1s
     "race_slow_3": 2086375188,            # lap2=12.3s
     "measurement_stuck_race_skip_gate": 539946052,        # gate 4 missed in laps 2 & 3
     "race_skip_gate_3": 1637195537,       # gate 4 missed in lap 3

@@ -180,7 +180,7 @@ def main(argv: list[str] | None = None) -> int:
              "environments dict",
     )
     sp_all.add_argument(
-        "--timeout", type=float, default=30.0,
+        "--timeout", type=float, default=60.0,
         help="per-env wall-clock cap in seconds (default 30); runs that "
              "exceed it are marked TIMEOUT and we move on",
     )

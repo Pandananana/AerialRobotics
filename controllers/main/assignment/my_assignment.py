@@ -82,7 +82,7 @@ def compute_gate_normal(corners):
     return normal / norm_len
 
 
-def clamp_control_command(control_command, drone, max_speed=2, max_yaw_rate=0.4):
+def clamp_control_command(control_command, drone, max_speed=0.8, max_yaw_rate=0.4):
     """Clamp position displacement and yaw change to limit drone speed and rotation."""
     x_t, y_t, z_t, yaw_t = control_command
     displacement = np.array([x_t, y_t, z_t]) - drone.pos
