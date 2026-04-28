@@ -20,7 +20,7 @@ CLI_MODE = False
 exp_num = 4                    # 0: Coordinate Transformation, 1: PID Tuning, 2: Kalman Filter, 3: Motion Planning, 4: Project
 control_style = 'path_planner'      # 'keyboard' or 'path_planner'
 rand_env = True                # Randomise the environment
-env_name = "race_skip_gate_0"                # Set to an environment name to replay it, None for random
+env_name = "race_skip_gate_2"               # Set to an environment name to replay it, None for random
 environments = {
     # Previously difficiult environments that have now been solved
     "wrong_gate_direction_and_detection_1": 1746958632,
@@ -34,9 +34,37 @@ environments = {
     "skips_gate_on_fast_forward": 238244043,
     "skip_gate_race": 2045800735,
     "orthogonal_gate_1": 2134677595,
-
-    # New environments that have not been solved yet
     "race_skip_gate_0": 1792777611,
+
+    # Unsolved environment
+    "race_skip_gate_1": 812061744,
+    "race_slow_1": 1424690296,
+    "race_taking_outer_line": 2000333,
+    "measurement_skip_gate_0": 1832539596,
+    "race_slow_2": 2028390449,            # lap2=13.4s, lap3=14.1s
+    "race_slow_3": 2086375188,            # lap2=12.3s
+    "race_skip_gate_2": 539946052,        # gate 4 missed in laps 2 & 3
+    "race_skip_gate_3": 1637195537,       # gate 4 missed in lap 3
+    "race_skip_gate_4": 1467813260,       # gate 1 missed in laps 2 & 3
+    "race_skip_gate_5": 929415251,        # gate 0 missed in lap 3
+    "race_skip_gate_6": 961228200,        # gate 3 missed in laps 2 & 3
+    "race_skip_gate_7": 1399339993,       # gate 4 missed in lap 3
+    "race_skip_gate_8": 2031188346,       # gate 4 missed in lap 3
+    "race_skip_gate_9": 1124332859,       # gate 1 missed in lap 3
+    "race_skip_gate_10": 1853106532,      # gate 4 missed in lap 3
+    "race_skip_gate_11": 947018758,       # gate 4 missed in lap 3
+    "race_skip_gate_12": 1762215427,      # gate 4 missed in lap 3
+    "race_skip_gate_13": 1449251712,      # gate 4 missed in lap 3
+    "race_skip_gate_14": 419818293,       # gate 4 missed in lap 3
+    "race_skip_gate_15": 485130533,       # gate 1 missed in laps 2 & 3
+    "race_skip_gate_16": 1228745658,      # gate 4 missed in lap 3
+    "race_skip_gate_17": 1529188106,      # gate 1 missed in lap 3
+    "race_skip_gate_18": 285004018,       # gate 1 missed in lap 2
+
+    # Basline working environments
+    "baseline_1": 147714297,
+    "baseline_2": 17731630,
+    
 }
 
 # Global variables for handling threads
