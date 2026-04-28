@@ -443,6 +443,10 @@ class PolyTrajectory:
         seg, t_local = self._seg_index(t)
         return self._poly_matrix(t_local)[1] @ self.coeffs[seg*6:(seg+1)*6, :]
 
+    def acceleration_at(self, t):
+        seg, t_local = self._seg_index(t)
+        return self._poly_matrix(t_local)[2] @ self.coeffs[seg*6:(seg+1)*6, :]
+
     def yaw_at(self, t):
         """Heading from horizontal velocity direction."""
         v = self.velocity_at(t)
@@ -651,17 +655,17 @@ def build_racing_trajectory(drone, measurements, num_laps=2):
 
 
 class RacingState(State):
-    """Fly through all gates along a precomputed time-parameterized polynomial trajectory."""
+    """Fly through all gates along a precomputed time-parameterized polynomial trajectory.
+
+    Emits an extended setpoint [x, y, z, yaw, vx_ff, vy_ff, vz_ff, ax_ff, ay_ff, az_ff]
+    so ex1_pid_control.py can inject velocity and acceleration feedforward directly into
+    the cascaded loops (vel FF added at velocity-PID setpoint, acc FF added at velocity-PID
+    output). This addresses centrifugal washout on tight curves: at 3 m/s, r≈2.5m needs
+    ~3.6 m/s² lateral acc, which the position PID alone cannot manufacture from position
+    error without lag-induced drift.
+    """
 
     SPEED_INTERVAL_S = 2.0
-
-    # Velocity feedforward via position-offset trick.
-    # Position PID: v_cmd = P_pos * (x_set - x). Setting x_set = x_desired + v_ff / P_pos
-    # yields v_cmd = P_pos * (x_desired - x) + v_ff, i.e. position feedback + velocity FF,
-    # without needing to plumb a separate FF channel through main.py / setpoint_to_pwm.
-    # P gains must match ex1_pid_control.py (exp_num=4 branch).
-    P_POS_XY = 1.5
-    P_POS_Z = 5.0
 
     def __init__(self, trajectory):
         self.trajectory = trajectory
@@ -673,13 +677,6 @@ class RacingState(State):
         self.race_pos_error_sum = 0.0
         self.race_pos_error_samples = 0
         self.interval_index = 0
-
-    def _apply_ff(self, pos, vel):
-        return np.array([
-            pos[0] + vel[0] / self.P_POS_XY,
-            pos[1] + vel[1] / self.P_POS_XY,
-            pos[2] + vel[2] / self.P_POS_Z,
-        ])
 
     def execute(self, drone, tracker, dt):
         # Tracking error: compare drone position to where the trajectory says it should be.
@@ -717,9 +714,13 @@ class RacingState(State):
 
         target = self.trajectory.position_at(self.t_elapsed)
         vel_ff = self.trajectory.velocity_at(self.t_elapsed)
-        target_ff = self._apply_ff(target, vel_ff)
+        acc_ff = self.trajectory.acceleration_at(self.t_elapsed)
         target_yaw = self.trajectory.yaw_at(self.t_elapsed)
-        return [target_ff[0], target_ff[1], target_ff[2], target_yaw], None
+        return [
+            target[0], target[1], target[2], target_yaw,
+            vel_ff[0], vel_ff[1], vel_ff[2],
+            acc_ff[0], acc_ff[1], acc_ff[2],
+        ], None
 
     def _flush_completed_speed_intervals(self, current_speed, current_error):
         while self.interval_elapsed >= self.SPEED_INTERVAL_S:

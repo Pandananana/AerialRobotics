@@ -96,6 +96,28 @@ class quadrotor_controller():
 
         # To check what is in sensor_data, look at main.py -> def read_sensors(self)
 
+        # Velocity / acceleration feedforward (length-10 setpoint carries inertial-frame
+        # FF channels; length-4 setpoints get zero FF). v_ff is summed onto the
+        # position-PID output so it bypasses the L_vel_xy clamp on the feedback term
+        # and survives at peak speed. a_ff is summed onto the velocity-PID output
+        # so the tilt setpoint matches the trajectory's required lateral acceleration
+        # even when position/velocity error is small — fixes centrifugal washout on
+        # tight curves.
+        #
+        # Units note: the XY velocity-PID output is interpreted downstream as a tilt
+        # angle in radians (small-angle approximation: a_lat ≈ g·sin(θ) ≈ g·θ), so
+        # XY a_ff in m/s² must be divided by g before being added. Z is genuinely
+        # in m/s² (acc_z gets added to gravity in the thrust mixer), so no scaling.
+        G = 9.81
+        if len(setpoint) >= 10:
+            v_ff = np.array([setpoint[4], setpoint[5], setpoint[6]])
+            a_ff_xy_tilt = np.array([setpoint[7], setpoint[8]]) / G
+            a_ff_z = float(setpoint[9])
+        else:
+            v_ff = np.zeros(3)
+            a_ff_xy_tilt = np.zeros(2)
+            a_ff_z = 0.0
+
         ### Position control loop ###
         # For tuning
         if self.tuning_level == "pos_xy":
@@ -108,10 +130,10 @@ class quadrotor_controller():
         self.pid_pos_y.set_setpoint(setpoint[1])
         self.pid_pos_z.set_setpoint(setpoint[2])
 
-        # Call PID controller
-        vel_x_setpoint_inertial = self.pid_pos_x.call(sensor_data["x_global"], dt=dt)
-        vel_y_setpoint_inertial = self.pid_pos_y.call(sensor_data["y_global"], dt=dt)
-        vel_z_setpoint_inertial = self.pid_pos_z.call(sensor_data["z_global"], dt=dt)
+        # Call PID controller, then add velocity feedforward.
+        vel_x_setpoint_inertial = self.pid_pos_x.call(sensor_data["x_global"], dt=dt) + v_ff[0]
+        vel_y_setpoint_inertial = self.pid_pos_y.call(sensor_data["y_global"], dt=dt) + v_ff[1]
+        vel_z_setpoint_inertial = self.pid_pos_z.call(sensor_data["z_global"], dt=dt) + v_ff[2]
 
         # Calculate rotation
         R_current = R.from_quat([sensor_data["q_x"], sensor_data["q_y"], sensor_data["q_z"], sensor_data["q_w"]])
@@ -122,11 +144,12 @@ class quadrotor_controller():
         if self.tuning_level == "vel_xy":
             vel_y_setpoint_inertial = self.tuning(-self.limits["L_vel_xy"], self.limits["L_vel_xy"], 3, dt, vel_y_setpoint_inertial, sensor_data["v_y"], "y velocity [m/s]")
 
-        # XY velocity control in inertial frame (decouples from yaw)
+        # XY velocity control in inertial frame (decouples from yaw), with acc FF
+        # added in tilt-rad units (a_ff_xy_tilt = a_ff_xy / g).
         self.pid_vel_x.set_setpoint(vel_x_setpoint_inertial)
         self.pid_vel_y.set_setpoint(vel_y_setpoint_inertial)
-        acc_x_inertial = self.pid_vel_x.call(sensor_data["v_x"], dt=dt)
-        acc_y_inertial = self.pid_vel_y.call(sensor_data["v_y"], dt=dt)
+        acc_x_inertial = self.pid_vel_x.call(sensor_data["v_x"], dt=dt) + a_ff_xy_tilt[0]
+        acc_y_inertial = self.pid_vel_y.call(sensor_data["v_y"], dt=dt) + a_ff_xy_tilt[1]
 
         # Rotate XY acceleration from inertial to body frame
         acc_body_xy = R_inertial_to_body @ np.array([acc_x_inertial, acc_y_inertial, 0.0])
@@ -137,9 +160,9 @@ class quadrotor_controller():
         if self.tuning_level == "vel_z":
             vel_z_setpoint_inertial = self.tuning(-self.limits["L_vel_z"], self.limits["L_vel_z"], 3, dt, vel_z_setpoint_inertial, sensor_data["v_z"], "z velocity [m/s]")
 
-        # Z velocity control (body frame, unchanged)
+        # Z velocity control (body frame, unchanged), with Z acc FF in m/s².
         self.pid_vel_z.set_setpoint(vel_z_setpoint_inertial)
-        acc_z_setpoint = self.pid_vel_z.call(sensor_data["v_z"], dt=dt)
+        acc_z_setpoint = self.pid_vel_z.call(sensor_data["v_z"], dt=dt) + a_ff_z
 
         yaw_setpoint = setpoint[3]
         return self.acceleration_and_yaw_to_pwm(dt, [acc_x_setpoint, acc_y_setpoint, acc_z_setpoint], yaw_setpoint, sensor_data)
